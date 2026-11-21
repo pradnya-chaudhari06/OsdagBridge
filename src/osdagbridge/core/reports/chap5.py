@@ -1064,19 +1064,35 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
     # End diaphragm: when configured as Cross Bracing it is designed as bracing
     # members → mirror the cross-bracing axial rows. For Rolled / Welded beam end
     # diaphragms the moment/shear design is not implemented yet → show a message.
-    _ed_type = ""
-    for _k, _v in bridge.input_dict.items():
-        if str(_k).startswith(KEY_MP_ED_TYPE) and _v:
-            _ed_type = str(_v)
-            break
-    _ed_is_cb = "brac" in _ed_type.strip().lower()
-    if _ed_is_cb:
-        _ed_moment_row = _row522(r"End Diaphragm --- Moment", _cb_row("compression"))
-        _ed_shear_row  = _row522(r"End Diaphragm --- Shear",  _cb_row("tension"))
-    else:
-        _ed_msg = r"Rolled / Welded section --- design to be added"
-        _ed_moment_row = _row522_msg(r"End Diaphragm --- Moment", _ed_msg)
-        _ed_shear_row  = _row522_msg(r"End Diaphragm --- Shear",  _ed_msg)
+    # End diaphragm rows (Table 5.22): one row per pair and member from end diaphragm data only.
+    # Rolled / Welded pairs have no design check: message row, not logged for the UR chart.
+    _ed_rows_522 = []
+    _ed_pairs_522 = bridge.get_ed_pairs()
+    if not _ed_pairs_522:
+        _ed_rows_522.append(_row522_msg(r"End Diaphragm", r"No end diaphragm defined"))
+    for _p in _ed_pairs_522:
+        _pt = _tex(_p)
+        if not bridge.ed_is_cross_bracing(_p):
+            _ed_rows_522.append(_row522_msg(
+                r"End Diaphragm " + _pt,
+                r"No design check available for " + _tex(bridge.get_ed_type(_p) or "this type")))
+            continue
+        for _m, _lbl in (("diagonal", "Diagonal"), ("chord", "Chord")):
+            _fs, _ft = bridge.get_ed_governing_force(_p, _m)
+            _cap = bridge.get_ed_capacity(_p, _m, _ft)
+            try:
+                _urv = float(bridge.get_ed_efficiency(_p, _m, _ft))
+            except (TypeError, ValueError):
+                _urv = None
+            try:
+                _dem = "%.2f kN" % abs(float(_fs))
+            except (TypeError, ValueError):
+                _dem = "---"
+            _ed_rows_522.append(_row522(
+                r"End Diaphragm " + _pt + r" --- " + _lbl,
+                (bridge.get_ed_gov_lc(_p, _m, _ft) or "---", _dem,
+                 (_cap + " kN") if _cap else "---",
+                 _ur_522(_urv) if _urv is not None else "---")))
 
     # Crack width (slab): governing crack width vs limit from the deck designer
     # (frequent SLS combination). _dk_gov_wk is the max of bottom/top/overhang wk.
@@ -1120,9 +1136,7 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         _row522(r"Cross Bracing --- Compression", _cb_row("compression")),
         _row522(r"Cross Bracing --- Tension",     _cb_row("tension")),
         _row522(r"Cross Bracing --- Slenderness", _cb_slender_row()),
-        _ed_moment_row,
-        _ed_shear_row,
-    ]
+    ] + _ed_rows_522
     t522_content = "\n".join(_t522)
 
     return r"""

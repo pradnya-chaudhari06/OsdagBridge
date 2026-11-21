@@ -131,7 +131,7 @@ def ur_summary_figure(ur_log, chart_dir):
     if not chart_dir:
         return ""
     try:
-        groups = {"Steel Plate Girders": [], "Concrete Deck Slab": [], "Cross Bracing": []}
+        groups = {"Steel Plate Girders": [], "Concrete Deck Slab": [], "Cross Bracing": [], "End Diaphragms": []}
         for label, cell in ur_log:
             m = re.search(r"\d+\.\d+", str(cell))
             if not m:
@@ -143,13 +143,15 @@ def ur_summary_figure(ur_log, chart_dir):
                 groups["Concrete Deck Slab"].append(v)
             elif l.startswith("Cross Bracing") and ("Compression" in l or "Tension" in l):
                 groups["Cross Bracing"].append(v)
+            elif l.startswith("End Diaphragm"):
+                groups["End Diaphragms"].append(v)
         items = [(k, max(v)) for k, v in groups.items() if v]
         _os.makedirs(chart_dir, exist_ok=True)
         path = ur_bar_chart(items, _os.path.join(chart_dir, "ur_summary.png"))
         if not path:
             return ""
         return _figure_tex(path, "Governing utilization ratio (UR = demand / capacity) by component; "
-                                 "the red dashed line marks UR = 1.0. End diaphragm utilization is not shown.")
+                                 "the red dashed line marks UR = 1.0. End diaphragms are shown for Cross Bracing type only.")
     except Exception:
         _log.exception("UR summary chart skipped")
         return ""
