@@ -1,4 +1,4 @@
-﻿"""Single source of truth for the OsdagBridge design-report look and feel.
+"""Single source of truth for the OsdagBridge design-report look and feel.
 
 Every colour, page dimension, table spacing, column type and header/footer
 rule used by the LaTeX preamble lives here. Chapter files must import from
@@ -10,7 +10,7 @@ COLORS = {"osdagGreen": "91B014"}
 
 # ---- Document / page ------------------------------------------------------
 DOCUMENT_OPTIONS = "12pt,a4paper"
-GEOMETRY_OPTIONS = "a4paper, margin=1in"
+GEOMETRY_OPTIONS = "a4paper, margin=1in, headheight=18pt"
 LINE_STRETCH = "1.15"
 
 # ---- Tables ---------------------------------------------------------------
