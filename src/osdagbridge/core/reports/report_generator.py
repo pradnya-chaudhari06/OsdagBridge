@@ -510,6 +510,118 @@ class ReportDataBridge:
         except Exception:
             return ""
 
+    # ---- End diaphragm accessors (kept separate from the cross-bracing ones) ----
+    def _ed_forces_dict(self) -> dict:
+        return self.output_dict.get("end_diaphragm_forces_dict", {}) or {}
+
+    def _ed_pair_designs(self) -> dict:
+        return self.output_dict.get("end_diaphragm_design_results", {}) or {}
+
+    def _ed_pair_forces(self, pair: str) -> dict:
+        try:
+            return self._ed_forces_dict()["pairs"][pair] or {}
+        except (KeyError, TypeError):
+            return {}
+
+    def get_ed_pairs(self) -> list:
+        import re as _re
+        found = set()
+        for k in self.input_dict:
+            m = _re.search(r"end_diaphragm_details\.G(\d+)G(\d+)\.type$", str(k))
+            if m:
+                found.add((int(m.group(1)), int(m.group(2))))
+        try:
+            for pr in self._ed_forces_dict().get("pairs", {}):
+                m = _re.match(r"G(\d+)-G(\d+)$", str(pr))
+                if m:
+                    found.add((int(m.group(1)), int(m.group(2))))
+        except Exception:
+            pass
+        return ["G%d-G%d" % t for t in sorted(found)]
+
+    def get_ed_type(self, pair: str) -> str:
+        tail = "end_diaphragm_details.%s.type" % pair.replace("-", "")
+        for k, v in self.input_dict.items():
+            if str(k).endswith(tail) and v:
+                return str(v)
+        return ""
+
+    def ed_is_cross_bracing(self, pair: str) -> bool:
+        return "brac" in self.get_ed_type(pair).strip().lower()
+
+    def get_ed_force(self, pair: str, member: str, force_type: str) -> str:
+        pfx = "diag" if member == "diagonal" else "chord"
+        val = self._ed_pair_forces(pair).get("%s_%s_kN" % (pfx, force_type))
+        return "%.3f" % val if val is not None else ""
+
+    def get_ed_governing_force(self, pair: str, member: str) -> tuple:
+        pfx = "diag" if member == "diagonal" else "chord"
+        f = self._ed_pair_forces(pair)
+        t_val = f.get("%s_tension_kN" % pfx)
+        c_val = f.get("%s_compression_kN" % pfx)
+        if t_val is not None and c_val is not None:
+            if abs(c_val) >= abs(t_val):
+                return ("%.3f" % c_val, "compression")
+            return ("%.3f" % t_val, "tension")
+        if c_val is not None:
+            return ("%.3f" % c_val, "compression")
+        if t_val is not None:
+            return ("%.3f" % t_val, "tension")
+        return ("", "compression")
+
+    def get_ed_gov_lc(self, pair: str, member: str, force_type: str) -> str:
+        pfx = "diag" if member == "diagonal" else "chord"
+        val = self._ed_pair_forces(pair).get("%s_%s_gov_lc" % (pfx, force_type))
+        return _tex(val) if val else ""
+
+    def _ed_osdag(self, pair: str, member: str, force_type: str) -> dict:
+        from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
+        try:
+            raw = self._ed_pair_designs()[pair][member][force_type]
+            return _extract_osdag_summary(raw or {})
+        except (KeyError, TypeError):
+            return {}
+
+    def get_ed_section(self, pair: str, member: str, force_type: str) -> str:
+        val = self._ed_osdag(pair, member, force_type).get("section")
+        return _tex(val) if val else ""
+
+    def get_ed_capacity(self, pair: str, member: str, force_type: str) -> str:
+        val = self._ed_osdag(pair, member, force_type).get("capacity_kN")
+        return "%.3f" % float(val) if val is not None else ""
+
+    def get_ed_efficiency(self, pair: str, member: str, force_type: str) -> str:
+        val = self._ed_osdag(pair, member, force_type).get("efficiency")
+        return "%.3f" % float(val) if val is not None else ""
+
+    def get_ed_slenderness(self, pair: str, member: str) -> str:
+        for ft in ("compression", "tension"):
+            val = self._ed_osdag(pair, member, ft).get("slenderness")
+            if val is not None:
+                return "%.1f" % float(val)
+        return ""
+
+    def get_ed_status(self, pair: str, member: str, force_type: str) -> str:
+        try:
+            val = self._ed_osdag(pair, member, force_type).get("efficiency")
+            if val is not None:
+                if float(val) <= 1.0:
+                    return r"\textcolor{black}{PASS}"
+                return r"\textcolor{red}{FAIL}"
+        except (TypeError, ValueError):
+            pass
+        return ""
+
+    def get_ed_connection(self, pair: str, member: str, force_type: str) -> str:
+        val = self._ed_osdag(pair, member, force_type).get("connection")
+        return str(val) if val else ""
+
+    def get_ed_prop(self, pair: str, key: str):
+        # Section property for Rolled / Welded / bracing members, e.g. key "A" or "rv" (None if absent)
+        return self.output_dict.get(
+            "transverse_member_design.ed.section_properties.end_diaphragm.%s.%s"
+            % (pair.replace("-", ""), key))
+
 def _format_project_location(pl_data):
     if not pl_data:
         return ''
