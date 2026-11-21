@@ -130,6 +130,7 @@ from .chap7 import ch7_quantities
 from .chap8 import ch8_design_log
 from .chap9 import references
 from . import styles
+from .table_utils import apply_longtable_headers
 
 logger = logging.getLogger(__name__)
 
@@ -818,10 +819,10 @@ def generate_report(payload, request):
             full_tex = "\n".join(doc_parts)
 
 
-            # NOTE: longtable header repetition is handled per-table in each
-            # chapter file (e.g. \endfirsthead / \endhead).  No automatic
-            # post-processing is applied here to avoid mis-ordering captions
-            # and column headings.
+            # Repeat caption + column headings on every page of every longtable.
+            # Conservative: only tables with the standard shape are rewritten.
+            full_tex, _lt_changed, _lt_total = apply_longtable_headers(full_tex)
+            logger.info("longtable headers repeated on %d of %d tables", _lt_changed, _lt_total)
 
             tmp_tex = os.path.join(tmp_dir, request.file_stem + '.tex')
             tmp_pdf = os.path.join(tmp_dir, request.file_stem + '.pdf')
