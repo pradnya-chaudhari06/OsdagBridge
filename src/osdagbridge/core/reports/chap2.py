@@ -26,6 +26,7 @@ from osdagbridge.core.utils.common import (
     KEY_MP_CB_SPACING,
     KEY_MP_CB_TYPE,
     KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+    KEY_MP_ED_IS_SECTION,
     KEY_MP_ED_MEMBER_ID,
     KEY_MP_ED_SELECT_GIRDERS,
     KEY_MP_ED_TYPE,
@@ -369,10 +370,22 @@ def _bracing_tables(input_dict, n_girders):
 
     # Helper: one end-diaphragm row (all locations share same config)
     def _ed_row(location, member_ids, i):
+        _pid = f"G{i}G{i+1}"
+        _ty, _sec = "", ""
+        for _m in ("M1", "M2"):
+            _sfx = f".{_pid}.E{i}{_m}"
+            _t = input_dict.get(f"{KEY_MP_ED_TYPE}{_sfx}")
+            if _t:
+                _ty = str(_t)
+                if "brac" in _ty.lower():
+                    _sec = input_dict.get(f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}{_sfx}") or ""
+                elif "rolled" in _ty.lower():
+                    _sec = input_dict.get(f"{KEY_MP_ED_IS_SECTION}{_sfx}") or ""
+                break
         return (location + r""" & """ + member_ids + r""" & """
-                + (_render_value(input_dict, f"{KEY_MP_ED_TYPE}.G{i}G{i+1}.E{i}M1"))
+                + (_tex(_ty) if _ty else "---")
                 + r""" & """
-                + (_render_value(input_dict, f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}.G{i}G{i+1}.E{i}M1"))
+                + (_tex(str(_sec)) if _sec else "---")
                 + r""" \\[6pt]
 \hline
 """)
@@ -403,10 +416,10 @@ def _bracing_tables(input_dict, n_girders):
 \setlength\LTleft{0pt}
 \setlength\LTright{\fill}
 
-\begin{longtable}{|L{2.2cm}|L{2.2cm}|L{3.0cm}|L{2.5cm}|C{1.8cm}|C{1.8cm}|}
+\begin{longtable}{|L{2.2cm}|L{2.2cm}|L{3.0cm}|L{2.5cm}|}
 \caption{\textbf{Member Properties: End Diaphragm Details}}
 \hline
-\textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} \\
+\textbf{Location} & \textbf{Member IDs} & \textbf{Type} & \textbf{Section} \\
 \hline
 """
 + ed_rows
