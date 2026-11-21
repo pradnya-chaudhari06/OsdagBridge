@@ -523,13 +523,25 @@ class ReportDataBridge:
         except (KeyError, TypeError):
             return {}
 
+    def _ed_type_lookup(self) -> dict:
+        # {(i, j): type}. Real input keys: ...end_diaphragm_details.type.G1G2.E1M1 (or M2);
+        # backend output keys: ...end_diaphragm_details.G1G2.type. Empty / None values are ignored.
+        import re as _re
+        res = {}
+        for src in (self.output_dict, self.input_dict):
+            for k, v in src.items():
+                if not v:
+                    continue
+                ks = str(k)
+                m = (_re.search(r"end_diaphragm_details\.G(\d+)G(\d+)\.type$", ks)
+                     or _re.search(r"end_diaphragm_details\.type\.G(\d+)G(\d+)\.E\d+M\d+$", ks))
+                if m:
+                    res.setdefault((int(m.group(1)), int(m.group(2))), str(v))
+        return res
+
     def get_ed_pairs(self) -> list:
         import re as _re
-        found = set()
-        for k in self.input_dict:
-            m = _re.search(r"end_diaphragm_details\.G(\d+)G(\d+)\.type$", str(k))
-            if m:
-                found.add((int(m.group(1)), int(m.group(2))))
+        found = set(self._ed_type_lookup())
         try:
             for pr in self._ed_forces_dict().get("pairs", {}):
                 m = _re.match(r"G(\d+)-G(\d+)$", str(pr))
@@ -540,11 +552,11 @@ class ReportDataBridge:
         return ["G%d-G%d" % t for t in sorted(found)]
 
     def get_ed_type(self, pair: str) -> str:
-        tail = "end_diaphragm_details.%s.type" % pair.replace("-", "")
-        for k, v in self.input_dict.items():
-            if str(k).endswith(tail) and v:
-                return str(v)
-        return ""
+        import re as _re
+        m = _re.match(r"G(\d+)-G(\d+)$", str(pair))
+        if not m:
+            return ""
+        return self._ed_type_lookup().get((int(m.group(1)), int(m.group(2))), "")
 
     def ed_is_cross_bracing(self, pair: str) -> bool:
         return "brac" in self.get_ed_type(pair).strip().lower()
