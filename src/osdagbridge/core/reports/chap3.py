@@ -266,6 +266,100 @@ def ch3_loads(input_dict):
 
     lc_rows_str = "\n".join(lc_rows)
 
+    # ---- Live load tables: vehicle loads and footpath load (separate) ----
+    def _num(v, nd=3):
+        try:
+            return f"{float(v):.{nd}f}"
+        except Exception:
+            return "N/A"
+
+    _im_a = _im_aa = None
+    try:
+        _span_f = float(span)
+        try:
+            _im_a = 1.0 + IRC6_2017.cl_208_2_impact_factor(_span_f)
+        except Exception:
+            pass
+        try:
+            _im_aa = 1.0 + IRC6_2017.cl_208_3_impact_factor(_span_f)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    try:
+        _brk_kn = IRC6_2017.cl_211_2_braking_force(int(lanes)) * 9.81
+    except Exception:
+        _brk_kn = None
+
+    _im_map = {
+        "Class A": _im_a,
+        "Class 70R (Wheeled)": _im_aa,
+        "Class 70R (Tracked)": _im_aa,
+        "Class 70R (Bogie)": _im_aa,
+        "Class AA (Wheeled)": _im_aa,
+        "Class AA (Tracked)": _im_aa,
+    }
+
+    _veh_rows = []
+    for _name in vehicles:
+        _veh_rows.append(
+            _tex(_name) + r" & " + _num(_im_map.get(_name)) + r" & "
+            + _num(_brk_kn, 2) + r" & N/A \\[6pt]" + "\n" + r"\hline"
+        )
+    if not _veh_rows:
+        _veh_rows.append(
+            r"None selected & N/A & N/A & N/A \\[6pt]" + "\n" + r"\hline"
+        )
+
+    ll_vehicle_tbl = (
+        r"\begin{longtable}{|L{4.5cm}|C{3.0cm}|C{3.5cm}|C{4.0cm}|}" + "\n"
+        + r"\caption{\textbf{Live Loads (LL) -- Vehicle Loads}}" + "\n"
+        + r"\hline" + "\n"
+        + r"\textbf{Vehicle Class} & \textbf{Impact Factor, 1+IM (--)} & "
+          r"\textbf{Braking Load (kN)} & \textbf{Centrifugal Force (kN)} \\[6pt]" + "\n"
+        + r"\hline" + "\n"
+        + "\n".join(_veh_rows) + "\n"
+        + r"\end{longtable}" + "\n"
+        + r"\par\noindent{\small Note: impact factor as per IRC 6 Cl. 208.2 (Class A) and "
+          r"Cl. 208.3 (Class AA and 70R); N/A where IRC 6 gives no factor for the class or "
+          r"the span is not available. Braking load as per Cl. 211.2 depends on the number "
+          r"of lanes, so it is the same for every vehicle class. Centrifugal force is not "
+          r"computed by this report (N/A).}"
+    )
+
+    _fp_val = "N/A"
+    _fp_basis = "Not specified"
+    if str(fp_mode).strip().lower() in ("as per irc 6", "as per irc6", "automatic"):
+        try:
+            _fp_val = _num(IRC6_2017.cl_206_1_footway_load())
+            _fp_basis = "IRC 6 Cl. 206.1"
+        except Exception:
+            pass
+    elif fp_value not in (None, ""):
+        _fp_val = _num(fp_value)
+        if _fp_val == "N/A":
+            _fp_val = _tex(str(fp_value))
+        _fp_basis = "User defined"
+    _fp_unit = r"kN/m\textsuperscript{2}" if _fp_val != "N/A" else "--"
+
+    ll_footpath_tbl = (
+        r"\begin{longtable}{|L{5.0cm}|C{2.5cm}|C{2.5cm}|L{5.0cm}|}" + "\n"
+        + r"\caption{\textbf{Live Loads (LL) -- Footpath Live Load}}" + "\n"
+        + r"\hline" + "\n"
+        + r"\textbf{Parameter} & \textbf{Value} & \textbf{Unit} & \textbf{Basis} \\[6pt]" + "\n"
+        + r"\hline" + "\n"
+        + r"\textnormal{Footpath Live Load Intensity} & " + _fp_val + r" & " + _fp_unit
+        + r" & " + _tex(_fp_basis) + r" \\[6pt]" + "\n"
+        + r"\hline" + "\n"
+        + r"\end{longtable}"
+    )
+
+    ll_tables_str = (
+        ll_vehicle_tbl + "\n\n" + r"\vspace{1em}" + "\n" + ll_footpath_tbl
+    )
+
+
     return r"""
 \chapter{Loads and Load Combinations}
 
@@ -300,20 +394,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \end{longtable}
 
 \vspace{1em}
-\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
-\caption{\textbf{Live Loads (LL)}}
-\hline
-\textbf{parameter} & \textbf{value} \\
-\hline
-\textnormal{Vehicles Considered} & """ + _tex(vehicles_str) + r""" \\[6pt]
-\hline
-\textnormal{Impact Factor (IRC 6)} & """ + _tex(impact_factor_str) + r""" \\[6pt]
-\hline
-\textnormal{Braking Load (IRC 6)} & """ + _tex(braking_force_str) + r""" \\[6pt]
-\hline
-\textnormal{Footpath Live Load (if applicable)} & """ + (_render_value(input_dict, KEY_LL_FOOTPATH_PRESSURE_VALUE, ' kN/m\\textsuperscript{2}')) + r""" \\[6pt]
-\hline
-\end{longtable}
+""" + ll_tables_str + r"""
 
 \vspace{1em}
 \begin{longtable}{|L{5.5cm}|p{10.0cm}|}
