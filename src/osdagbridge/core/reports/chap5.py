@@ -800,6 +800,58 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         cb_capacity_rows.append(r"\hline")
     cb_capacity_content = "\n".join(cb_capacity_rows)
 
+    # ---- Section 5.4 End Diaphragm tables: built per pair from get_ed_*, never from cross-bracing data ----
+    def _ed_num(v, scale):
+        try:
+            return "%.1f" % (float(v) * scale)
+        except (TypeError, ValueError):
+            return ""
+
+    def _ed_d(x):
+        return x if x else "---"
+
+    def _ed_na(n):
+        return r"\multicolumn{%d}{c|}{No design check available for this end diaphragm type}" % n
+
+    ed_forces_rows, ed_slenderness_rows, ed_capacity_rows = [], [], []
+    _ed_pairs_54 = bridge.get_ed_pairs()
+    if not _ed_pairs_54:
+        ed_forces_rows.append(r"\multicolumn{6}{|c|}{No end diaphragm defined} \\[6pt]" + "\n\\hline")
+        ed_slenderness_rows.append(r"\multicolumn{6}{|c|}{No end diaphragm defined} \\[6pt]" + "\n\\hline")
+        ed_capacity_rows.append(r"\multicolumn{8}{|c|}{No end diaphragm defined} \\[6pt]" + "\n\\hline")
+    for _p in _ed_pairs_54:
+        _pt = _tex(_p)
+        if not bridge.ed_is_cross_bracing(_p):
+            _ty = _tex(bridge.get_ed_type(_p) or "Rolled / Welded")
+            _a = _ed_d(_ed_num(bridge.get_ed_prop(_p, "A"), 100))
+            _r = _ed_d(_ed_num(bridge.get_ed_prop(_p, "rv"), 10))
+            ed_forces_rows.append(_pt + " & " + _ty + r" & --- & --- & " + _a + " & " + _r + r" \\[6pt]" + "\n\\hline")
+            ed_slenderness_rows.append(_pt + " & " + _ty + " & " + _ed_na(4) + r" \\[6pt]" + "\n\\hline")
+            ed_capacity_rows.append(_pt + " & " + _ty + " & " + _ed_na(6) + r" \\[6pt]" + "\n\\hline")
+            continue
+        _f, _s, _c = [], [], []
+        for _m, _lbl in (("diagonal", "Diagonal"), ("chord", "Chord")):
+            _fs, _ft = bridge.get_ed_governing_force(_p, _m)
+            _nat = "T" if _ft == "tension" else "C"
+            _lim = 400 if _ft == "tension" else 250
+            _sl = bridge.get_ed_slenderness(_p, _m)
+            _f.append(" & " + _lbl + " & " + _ed_d(bridge.get_ed_connection(_p, _m, _ft)) + " & "
+                      + _ed_d(bridge.get_ed_section(_p, _m, _ft)) + r" & --- & --- \\[6pt]\cline{2-6}")
+            _s.append(" & " + _lbl + " & " + _nat + r" & --- & " + _ed_d(_sl) + " & " + str(_lim) + " --- "
+                      + get_status_str(_sl, _lim) + r" \\[6pt]\cline{2-6}")
+            _c.append(" & " + _lbl + " & " + _ed_d(bridge.get_ed_section(_p, _m, _ft)) + " & "
+                      + _ed_d(bridge.get_ed_gov_lc(_p, _m, _ft)) + " & " + _ed_d(_fs) + " & "
+                      + _ed_d(bridge.get_ed_capacity(_p, _m, _ft)) + " & " + _ed_d(bridge.get_ed_efficiency(_p, _m, _ft))
+                      + " & " + bridge.get_ed_status(_p, _m, _ft) + r" \\[6pt]\cline{2-8}")
+        _mr = r"\multirow{2}{*}{\makecell{" + _pt + r"}}"
+        for _rows, _dst in ((_f, ed_forces_rows), (_s, ed_slenderness_rows), (_c, ed_capacity_rows)):
+            _dst.append(_mr + _rows[0])
+            _dst.extend(_rows[1:])
+            _dst.append(r"\hline")
+    ed_forces_content = "\n".join(ed_forces_rows)
+    ed_slenderness_content = "\n".join(ed_slenderness_rows)
+    ed_capacity_content = "\n".join(ed_capacity_rows)
+
 
 
     # ── Deck slab design value helpers (Tables 5.17 a/b/c/e/g) ────────────────
@@ -1470,7 +1522,7 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Connection} & \textbf{Section} & \textbf{$A_g$ (mm²)} & \textbf{$r_{min}$ (mm)} \\[6pt]
 \hline
-""" + cb_forces_content + r"""
+""" + ed_forces_content + r"""
 \end{longtable}
 \noindent\textit{Note: $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}
 
@@ -1480,7 +1532,7 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Nature} & \textbf{Eff.\ Length $KL$ (mm)} & \textbf{$KL/r$} & \textbf{Limit / Status} \\[6pt]
 \hline
-""" + cb_slenderness_content + r"""
+""" + ed_slenderness_content + r"""
 \end{longtable}
 \noindent\textit{Note:  3. Limit = 250 for compression members, 400 for tension members. $K = 1.0$ for members with both ends pinned.}
 
@@ -1491,9 +1543,9 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{Governing LC} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} & \textbf{UR} & \textbf{Status} \\[6pt]
 \hline
-""" + cb_capacity_content + r"""
+""" + ed_capacity_content + r"""
 \end{longtable}
-\noindent\textit{Note: Designed per IS 800 Cl. 7 (compression) and Cl. 6 (tension). OsdagBridge cross-bracing module used.}
+\noindent\textit{Note: Designed per IS 800 Cl. 7 (compression) and Cl. 6 (tension). Cross Bracing type end diaphragms use the OsdagBridge cross-bracing design module. Rolled and Welded beam end diaphragms show section properties only, as the backend provides no design check for them.}
 
 % ===========================
 \section{Overall Design Check Summary}
