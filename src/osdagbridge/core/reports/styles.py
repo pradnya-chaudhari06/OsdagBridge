@@ -101,7 +101,6 @@ _PREAMBLE = r"""
 \usepackage{lastpage}
 \usepackage{makecell}
 \usepackage{etoolbox}
-\usepackage{needspace}
 
 \numberwithin{table}{chapter}
 \numberwithin{figure}{chapter}
@@ -170,3 +169,16 @@ def build_preamble(pn, jn, rd, rv):
         COLTYPES="\n".join(r"\newcolumntype{%s}[1]{%s}" % kv for kv in COLUMN_TYPES),
         PAGESTYLES=styles.rstrip("\n"),
     )
+
+# ---------------------------------------------------------------------------
+# Chart style (used by charts.py: UR bar charts and material quantity charts)
+# ---------------------------------------------------------------------------
+CHART_DPI = 200
+CHART_FIGSIZE = (6.4, 3.4)
+CHART_OK_COLOR = "#4C78A8"
+CHART_FAIL_COLOR = "#D62728"
+CHART_LIMIT_COLOR = "#D62728"
+CHART_STEEL_COLOR = "#4C78A8"
+CHART_CONCRETE_COLOR = "#8C8C8C"
+CHART_REBAR_COLOR = "#F58518"
+CHART_FONT_SIZE = 9

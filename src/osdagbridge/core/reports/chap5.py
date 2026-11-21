@@ -145,7 +145,7 @@ from osdagbridge.core.reports.report_utils import _tex, _render_value, get_girde
 
 if TYPE_CHECKING:
     pass
-def ch5_design_checks(checks_data, bridge) -> str:
+def ch5_design_checks(checks_data, bridge, chart_dir=None) -> str:
     """Chapter 5 — Design Checks.
 
     Parameters
@@ -975,8 +975,16 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         ratio, sf, lim = best
         return ("---", f"{sf:.1f}", f"{lim:.0f}", _ur_522(ratio))
 
+    try:
+        from .charts import ur_summary_figure as _ur_fig
+    except Exception:
+        def _ur_fig(*_a, **_k):
+            return ""
+    _ur_log = []  # (row label, UR cell) pairs for the Section 5.5 chart
+
     def _row522(label, cells):
         c = [x if x else "---" for x in cells]
+        _ur_log.append((label, c[3] if len(c) > 3 else ""))
         return label + r" & " + r" & ".join(c) + r" \\[6pt]" + "\n\\hline"
 
     # Deck rows: Demand/Capacity from deck_report_values (KEY_DD_*, the same dict
@@ -1189,6 +1197,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 """ + g_summary_table_content + r"""
 \end{longtable}
 \noindent\textit{Note: UR = Demand / Capacity. A value $\leq 1.0$ indicates a passing check. The controlling check is the criterion with the highest UR for each girder, with the real load case/combination that drives it.}
+""" + _ur_fig(_ur_log, chart_dir) + r"""
 
 \vspace{1em}
 

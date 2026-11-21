@@ -1,5 +1,5 @@
-def ch7_quantities(input_dict):
-    return r"""
+def ch7_quantities(input_dict, chart_dir=None):
+    _body = r"""
 \chapter{Material Take-off \& Quantity Summary}
 \label{ch:material-takeoff}
 
@@ -29,5 +29,9 @@ def ch7_quantities(input_dict):
 \hline
 \end{longtable}
 """
-
-
+    try:
+        from .charts import material_figures_latex as _mat_fig
+    except Exception:
+        def _mat_fig(*_a, **_k):
+            return ""
+    return _body + _mat_fig(input_dict, chart_dir)
