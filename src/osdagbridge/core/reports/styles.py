@@ -21,6 +21,7 @@ LINE_STRETCH = "1.15"
 # ---- Tables ---------------------------------------------------------------
 TABCOLSEP = "6pt"
 ARRAYSTRETCH = "1.12"
+CH4_ARRAYSTRETCH = "1.25"          # dense Chapter 4 summary table (local override)
 ARRAYRULEWIDTH = "0.5pt"
 EXTRAROWHEIGHT = "0.6pt"
 LT_LEFT = r"\fill"
