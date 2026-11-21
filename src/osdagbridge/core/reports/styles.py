@@ -6,7 +6,12 @@ this module instead of hard-coding formatting values.
 """
 
 # ---- Colours (HTML hex without '#') ---------------------------------------
-COLORS = {"osdagGreen": "91B014"}
+COLORS = {
+    "osdagGreen": "91B014",
+    "osdagFail": "FF0000",   # FAIL status text (was \textcolor{red})
+    "osdagPass": "000000",   # PASS status text (was \textcolor{black})
+    "osdagInfo": "0000FF",   # informational lines (was \textcolor{blue})
+}
 
 # ---- Document / page ------------------------------------------------------
 DOCUMENT_OPTIONS = "12pt,a4paper"
@@ -23,7 +28,7 @@ LT_RIGHT = r"\fill"
 LT_PRE = "0pt"
 LT_POST = "6pt"
 TABLE_NEEDSPACE = r"5\baselineskip"
-HEADER_ROW_SKIP = "6pt"          # used by the longtable helper (next step)
+HEADER_ROW_SKIP = "6pt"          # value of \OsdagRowSkip, the gap after a table row
 
 COLUMN_TYPES = (
     ("L", r">{\raggedright\arraybackslash}p{#1}"),
@@ -126,6 +131,7 @@ _PREAMBLE = r"""
 \setstretch{@STRETCH@}
 
 % Custom Commands
+\newcommand{\OsdagRowSkip}{@ROWSKIP@}
 \newcommand{\placeholder}[1]{\textit{\textless #1\textgreater}}
 \newcommand{\todo}[1]{\colorbox{yellow}{TODO: #1}}
 @COLTYPES@
@@ -165,7 +171,7 @@ def build_preamble(pn, jn, rd, rv):
         DOCOPTS=DOCUMENT_OPTIONS, GEOM=GEOMETRY_OPTIONS, STRETCH=LINE_STRETCH,
         LTLEFT=LT_LEFT, LTRIGHT=LT_RIGHT, LTPRE=LT_PRE, LTPOST=LT_POST,
         TABCOLSEP=TABCOLSEP, ARRAYSTRETCH=ARRAYSTRETCH, RULEW=ARRAYRULEWIDTH,
-        EXTRAROW=EXTRAROWHEIGHT, NEEDSPACE=TABLE_NEEDSPACE,
+        EXTRAROW=EXTRAROWHEIGHT, NEEDSPACE=TABLE_NEEDSPACE, ROWSKIP=HEADER_ROW_SKIP,
         COLOURS="\n".join(r"\definecolor{%s}{HTML}{%s}" % kv for kv in COLORS.items()),
         COLTYPES="\n".join(r"\newcolumntype{%s}[1]{%s}" % kv for kv in COLUMN_TYPES),
         PAGESTYLES=styles.rstrip("\n"),

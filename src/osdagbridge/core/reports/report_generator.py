@@ -470,8 +470,8 @@ class ReportDataBridge:
             if val is not None:
                 ur = float(val)
                 if ur <= 1.0:
-                    return r"\textcolor{black}{PASS}"
-                return r"\textcolor{red}{FAIL}"
+                    return r"\textcolor{osdagPass}{PASS}"
+                return r"\textcolor{osdagFail}{FAIL}"
         except (TypeError, ValueError):
             pass
         return ""
@@ -618,8 +618,8 @@ class ReportDataBridge:
             val = self._ed_osdag(pair, member, force_type).get("efficiency")
             if val is not None:
                 if float(val) <= 1.0:
-                    return r"\textcolor{black}{PASS}"
-                return r"\textcolor{red}{FAIL}"
+                    return r"\textcolor{osdagPass}{PASS}"
+                return r"\textcolor{osdagFail}{FAIL}"
         except (TypeError, ValueError):
             pass
         return ""
