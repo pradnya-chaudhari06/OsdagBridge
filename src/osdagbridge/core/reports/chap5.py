@@ -1497,7 +1497,7 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \noindent\textit{Note: $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}
 
 \vspace{1em}
-\begin{longtable}{|C{2.2cm}|L{2.2cm}|L{2.5cm}|C{2.5cm}|C{2.5cm}|>{\centering\arraybackslash}p{3.6cm}|}
+\begin{longtable}{|C{1.9cm}|L{1.9cm}|L{2.2cm}|C{2.2cm}|C{2.2cm}|>{\centering\arraybackslash}p{2.9cm}|}
 \caption{\textbf{Cross Bracing --- Slenderness Ratio Check (IS~800 Cl.~3.8 )}}
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Nature} & \textbf{Eff.\ Length $KL$ (mm)} & \textbf{$KL/r$} & \textbf{Limit / Status} \\[6pt]
@@ -1507,7 +1507,7 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \noindent\textit{Note:  3. Limit = 250 for compression members, 400 for tension members. $K = 1.0$ for members with both ends pinned.}
 
 \vspace{1em}
-\begin{longtable}{|C{2.0cm}|L{1.8cm}|C{2.2cm}|C{3.0cm}|C{1.8cm}|C{1.8cm}|C{1.2cm}|C{1.8cm}|}
+\begin{longtable}{|C{1.5cm}|L{1.5cm}|C{1.9cm}|C{2.4cm}|C{1.5cm}|C{1.5cm}|C{1.0cm}|C{1.2cm}|}
 \caption{\textbf{Cross Bracing Design --- Capacity Summary}}
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{Governing LC} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} & \textbf{UR} & \textbf{Status} \\[6pt]
@@ -1541,7 +1541,7 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \noindent\textit{Note: $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}
 
 \vspace{1em}
-\begin{longtable}{|C{2.2cm}|L{2.2cm}|L{2.5cm}|C{2.5cm}|C{2.5cm}|>{\centering\arraybackslash}p{3.6cm}|}
+\begin{longtable}{|C{1.9cm}|L{1.9cm}|L{2.2cm}|C{2.2cm}|C{2.2cm}|>{\centering\arraybackslash}p{2.9cm}|}
 \caption{\textbf{End Diaphragm --- Slenderness Ratio Check (IS~800 Cl.~3.8 )}}
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Nature} & \textbf{Eff.\ Length $KL$ (mm)} & \textbf{$KL/r$} & \textbf{Limit / Status} \\[6pt]
@@ -1552,7 +1552,7 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 
 \vspace{1em}
 
-\begin{longtable}{|C{2.0cm}|L{1.8cm}|C{2.2cm}|C{3.0cm}|C{1.8cm}|C{1.8cm}|C{1.2cm}|C{1.8cm}|}
+\begin{longtable}{|C{1.5cm}|L{1.5cm}|C{1.9cm}|C{2.4cm}|C{1.5cm}|C{1.5cm}|C{1.0cm}|C{1.2cm}|}
 \caption{\textbf{End Diaphragm Design --- Capacity Summary}}
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{Governing LC} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} & \textbf{UR} & \textbf{Status} \\[6pt]

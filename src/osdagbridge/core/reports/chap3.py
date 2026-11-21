@@ -313,7 +313,7 @@ def ch3_loads(input_dict):
         )
 
     ll_vehicle_tbl = (
-        r"\begin{longtable}{|L{4.5cm}|C{3.0cm}|C{3.5cm}|C{4.0cm}|}" + "\n"
+        r"\begin{longtable}{|L{4.2cm}|C{2.8cm}|C{3.3cm}|C{3.9cm}|}" + "\n"
         + r"\caption{\textbf{Live Loads (LL) -- Vehicle Loads}}" + "\n"
         + r"\hline" + "\n"
         + r"\textbf{Vehicle Class} & \textbf{Impact Factor, 1+IM (--)} & "
@@ -344,7 +344,7 @@ def ch3_loads(input_dict):
     _fp_unit = r"kN/m\textsuperscript{2}" if _fp_val != "N/A" else "--"
 
     ll_footpath_tbl = (
-        r"\begin{longtable}{|L{5.0cm}|C{2.5cm}|C{2.5cm}|L{5.0cm}|}" + "\n"
+        r"\begin{longtable}{|L{4.8cm}|C{2.4cm}|C{2.4cm}|L{4.6cm}|}" + "\n"
         + r"\caption{\textbf{Live Loads (LL) -- Footpath Live Load}}" + "\n"
         + r"\hline" + "\n"
         + r"\textbf{Parameter} & \textbf{Value} & \textbf{Unit} & \textbf{Basis} \\[6pt]" + "\n"
