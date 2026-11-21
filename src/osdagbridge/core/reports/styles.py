@@ -101,6 +101,7 @@ _PREAMBLE = r"""
 \usepackage{lastpage}
 \usepackage{makecell}
 \usepackage{etoolbox}
+\usepackage{needspace}
 
 \numberwithin{table}{chapter}
 \numberwithin{figure}{chapter}
