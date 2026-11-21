@@ -144,6 +144,36 @@ def _convert(block):
     return "\n".join(out) + body
 
 
+_MR_START = re.compile(r"(?m)^[ \t]*\\multirow\{(\d+)\}\{\*\}")
+
+
+def _keep_multirow_together(block):
+    """Forbid a page break inside a \\multirow row group.
+
+    A row that starts with \\multirow{N}{*} owns the next N rows. The
+    terminators of all but the last of them become \\\\* so longtable keeps the
+    group on one page. A group ends early at a \\hline or at the next group.
+    """
+    marks = set()
+    for m in _MR_START.finditer(block):
+        pos, ends = m.start(), []
+        for r in range(int(m.group(1))):
+            e = _row_end(block, pos)
+            if e < 0:
+                break
+            seg = block[pos:e]
+            if r and (re.search(r"\\hline", seg) or _MR_START.search(seg)):
+                break
+            ends.append(e)
+            pos = e
+        for e in ends[:-1]:
+            marks.add(block.rfind("\\\\", 0, e) + 2)
+    for k in sorted(marks, reverse=True):
+        if block[k:k + 1] != "*":
+            block = block[:k] + "*" + block[k:]
+    return block
+
+
 def apply_longtable_headers(tex):
     """Return (new_tex, tables_changed, tables_total)."""
     out, pos, changed, total = [], 0, 0, 0
@@ -156,9 +186,10 @@ def apply_longtable_headers(tex):
             break
         e += len(_END)
         block = tex[s:e]
-        new = _convert(block)
+        conv = _convert(block)
+        new = _keep_multirow_together(conv)
         total += 1
-        changed += new != block
+        changed += conv != block
         out += [tex[pos:s], new]
         pos = e
     out.append(tex[pos:])

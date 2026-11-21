@@ -123,6 +123,14 @@ _PREAMBLE = r"""
 % if fewer than 5 baseline-skips remain, break to the next page first.
 \BeforeBeginEnvironment{table}{\needspace{@NEEDSPACE@}}
 \BeforeBeginEnvironment{longtable}{\needspace{@NEEDSPACE@}}
+% keep a page break from falling right after a \cline rule (multirow pair blocks)
+\makeatletter
+\patchcmd{\@cline}
+  {\noalign{\vskip-\arrayrulewidth}}
+  {\noalign{\nobreak\vskip-\arrayrulewidth}}
+  {}
+  {\PackageWarning{osdag}{\string\cline\space break patch failed}}
+\makeatother
 
 @COLOURS@
 
