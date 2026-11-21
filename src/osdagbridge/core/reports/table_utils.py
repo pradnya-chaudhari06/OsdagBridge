@@ -140,9 +140,7 @@ def _convert(block):
     out += ["\\hline", header, "\\hline", "\\endfirsthead"]
     if caption:
         out.append("\\multicolumn{%d}{l}{\\small\\textit{Table \\thetable\\ (continued)}}\\\\" % n)
-    out += ["\\hline", header, "\\hline", "\\endhead",
-            "\\multicolumn{%d}{|r|}{\\small\\textit{Continued on next page}}\\\\" % n,
-            "\\hline", "\\endfoot", "\\endlastfoot"]
+    out += ["\\hline", header, "\\hline", "\\endhead"]
     return "\n".join(out) + body
 
 
