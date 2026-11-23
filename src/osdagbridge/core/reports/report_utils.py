@@ -22,6 +22,10 @@ def _tex(value):
                     ('~', r'\textasciitilde{}'), ('^', r'\^{}')]:
         s = s.replace(ch, esc)
     s = s.replace(':', r':\allowbreak{}')
+    # Math relation glyphs used in design-check names (e.g. "Leg ≤ H_limit");
+    # pdflatex has no text glyph for them and stopped with an error before.
+    for uni, tex in [('≤', r'\ensuremath{\leq}'), ('≥', r'\ensuremath{\geq}')]:
+        s = s.replace(uni, tex)
     return s
 
 
@@ -92,6 +96,28 @@ def _fig_or_placeholder(path, caption, width=r'0.9\textwidth'):
             r'\caption*{' + caption + '}\n'
             r'\end{figure}')
 
+CHART_UNAVAILABLE_TEXT = "Chart could not be generated; values are in Table"
+
+
+def chart_figure_or_placeholder(path, caption, table_label, width, placement="H", note_tex=""):
+    """A chart figure, or -- when *path* is None because the chart could not be
+    drawn -- a visible framed placeholder with the same caption that points to
+    the table holding the values (``\\ref{table_label}``, so the number printed
+    is always the real table number).
+    """
+    if path:
+        body = (r'\includegraphics[width=' + width + r',keepaspectratio]{'
+                + path.replace('\\', '/') + '}')
+    else:
+        body = (r'\fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2em}'
+                r'\textbf{' + CHART_UNAVAILABLE_TEXT + r'~\ref{' + table_label + r'}.}'
+                r'\vspace{2.2em}}}')
+    return (r'\begin{figure}[' + placement + ']' + '\n'
+            r'\centering' + '\n' + body + '\n'
+            r'\caption{' + caption + '}' + note_tex + '\n'
+            r'\end{figure}' + '\n')
+
+
 def _fig_embed(path, caption, width=r'\textwidth', height=None):
     """Embed a real figure when path is provided (already copied); otherwise use an fbox placeholder."""
     if path:
@@ -108,8 +134,10 @@ def _fig_embed(path, caption, width=r'\textwidth', height=None):
                 r'\vspace{-0.5em}' + '\n'
                 r'\end{figure}')
     # fbox placeholder — matches template exactly
+    # \par: consecutive placeholders must not end up side by side on one
+    # line (three 0.97\textwidth boxes overflowed the page by ~440 pt).
     return (r'\noindent\fbox{\parbox{0.97\textwidth}{' + '\n'
             r'\textit{[ PLACEHOLDER: ' + caption + r' ]}' + '\n'
-            r'}}')
+            r'}}\par\medskip')
 
 

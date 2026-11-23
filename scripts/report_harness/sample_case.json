@@ -1,0 +1,15 @@
+{
+  "_provenance": "Demonstration design case used to produce Report_Before.pdf and Report_After.pdf. The repository contains no real project file (.osi) and examples/plate_girder/*.yaml are placeholders. Span 30 m is taken from examples/plate_girder/example_basic.yaml; 7.5 m carriageway is the IRC two-lane carriageway; skew 0 deg; location = a station from the bundled weather database. Every other input (vehicles, materials, girder layout, design options) is the OsdagBridge GUI default. Replace this file with a real project's values before using the report for engineering decisions.",
+  "span_m": 30,
+  "carriageway_width_m": 7.5,
+  "skew_angle_deg": 0,
+  "location": {"state": "Maharashtra", "district": "Mumbai(Bombay) (Santa Cruz)"},
+  "extra_inputs": {},
+  "report_metadata": {
+    "project_name": "OsdagBridge Demonstration Case (30 m span)",
+    "designer": "Report generator QA",
+    "job_number": "DEMO-30",
+    "report_version": "Rev 0",
+    "comments": "Demonstration input (GUI defaults, 30 m span, 7.5 m carriageway) - not a real project."
+  }
+}

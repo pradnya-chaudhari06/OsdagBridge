@@ -144,6 +144,70 @@ Continuous integration runs automatically through GitHub Actions (`.github/workf
 
 ---
 
+## Design Report Generator: Tests and Report Generation (Windows)
+
+The report generator lives in `src/osdagbridge/core/reports/`. A summary of the changes is in `deliverables/Technical_Changes.pdf`.
+
+### 1. Environment
+
+```powershell
+conda env create -f environment.yml        # one time; creates "osdagbridge-env" (Python 3.12)
+conda activate osdagbridge-env
+pip install pytest pymupdf                 # test tools (pymupdf reads the generated PDFs)
+```
+
+`pdflatex` ships inside the env (`osdag_latex_env`), so no MiKTeX/TeX Live install is needed. Always activate the env: starting its `python.exe` without activation can make numpy/matplotlib fail to load their DLLs.
+
+**Check which source tree Python imports.** The env's editable install may point to a different checkout:
+
+```powershell
+python -c "import osdagbridge, sys; print(osdagbridge.__path__)"
+```
+
+If the first path is not this folder's `src\osdagbridge`, run every command below with this folder's sources first on the path:
+
+```powershell
+$env:PYTHONPATH = "$PWD\src"
+```
+
+### 2. Run the tests
+
+```powershell
+python -m pytest tests -q
+```
+
+Expected: `163 passed` (2026-11-23). The PDF-level tests compile real LaTeX; they are skipped if `pdflatex` or `pymupdf` is missing.
+
+### 3. Generate the design report
+
+* **In the application:** start it with `python -m osdagbridge.desktop`, fill in the Input Dock, press **Design**, then **Generate Report** → **Save PDF**.
+* **Scripted, same GUI code path.** The harness opens the real window off-screen, runs the design and generates the report. Dialogs are bypassed by code:
+
+```powershell
+$env:HARNESS_PLATFORM = "windows"
+$env:OSDAGBRIDGE_REPORT_KEEP_LOG = "1"            # keep the LaTeX .log next to the PDF
+$env:HARNESS_DUMP = "out\payload.pkl"             # optional: save data for fast rebuilds
+python scripts/report_harness/generate_report_offscreen.py scripts/report_harness/sample_case.json out\Report_After.pdf
+```
+
+* **Rebuild from a saved payload** (no new design run):
+
+```powershell
+python scripts/report_harness/rebuild_report.py out\payload.pkl out\Report_rebuilt.pdf
+```
+
+`sample_case.json` is a **demonstration case** (GUI defaults, 30 m span), not a real project.
+
+### 4. Known environment restrictions and GUI limitations
+
+* The harness process crashes during Qt/OpenCASCADE teardown *after* the PDF is written (exit code `-1073741819` / 139). The PDF is complete.
+* A `UnboundLocalError ... braking_force_2` traceback in the console is expected. It is an upstream IRC 6 braking-function defect for ≤ 2 lanes (D-18). It is logged, and the PDF shows "Not available" instead.
+* On machines where Windows Smart App Control blocks Shiboken/PySide6 or scipy, the GUI and the harness cannot run. Do not disable security features: use the existing PDFs in `deliverables/`, and run only the tests that do not need the blocked component.
+* The GUI was exercised only through the harness (programmatically), not by hand clicking.
+* `requirements.txt` pins `PySide6<=6.9.3`, while `environment.yml` takes PySide6 from `osdag::osdag` (6.12.0 installed); the app ran with 6.12.0.
+
+---
+
 ## Development Guidelines
 
 ### Key Code Locations

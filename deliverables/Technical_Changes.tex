@@ -1,0 +1,96 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1.7cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{needspace}
+\setlist{nosep,leftmargin=1.2em}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
+\titlespacing*{\section}{0pt}{8pt}{3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\sloppy
+\setlength{\emergencystretch}{3em}
+\newcommand{\f}[1]{\texttt{#1}}
+\begin{document}
+
+{\Large\bfseries OsdagBridge LaTeX Report Generator --- Technical Changes}\par
+\vspace{2pt}
+{\small\raggedright Plate-girder bridge design report (PyLaTeX $\to$ pdflatex). Base: \f{dev} @ \f{d74f56d}; branch \f{feature/report-generator-enhancements} (uncommitted). Long reference: \f{TECHNICAL\_CHANGES.md}.
+Verified state: report regenerated through the GUI harness with the demonstration inputs --- \textbf{75 pages, 0 LaTeX errors, 0 over-wide tables, 0 footer intrusions}; \textbf{163 automated tests pass} (2026-11-23). No engineering formula, code factor, load or design result was changed.\par}
+
+\section{Key code and LaTeX/PyLaTeX modifications}
+\begin{longtable}{@{}>{\raggedright\bfseries}p{2.5cm}p{14.6cm}@{}}
+R1 Headers & Every multi-page table is built by \f{latex\_tables.build\_longtable()} on PyLaTeX \f{LongTable}: first head, ``(continued)'' head repeated on each page, ``Continued on next page'' foot. 50 tables migrated.\\
+R2 Layout & Head/foot space reserved in \f{geometry}; column widths fitted to the text width (\f{fit\_colspec}); \verb|\multirow| groups never split across pages (\verb|\\*|, \verb|\cline| no-break patch, large \f{LTchunksize}); closing rule in \verb|\endlastfoot|; no \verb|\needspace| before longtables. The ``G4 in the footer'' defect is gone. LaTeX errors 139\,$\to$\,0, over-wide tables 46\,$\to$\,0.\\
+R3 Live loads & Separate Vehicle Live Load (Table 3.3) and Footway Live Load (Table 3.4) tables built from the vehicles and footpath actually selected in the GUI. Centrifugal force: ``Not applicable (straight bridge)'' --- the pipeline has no plan-curvature input and models the bridge straight in plan.\\
+R4 UR charts & Section 5.5: four bar charts (girders, deck slab, cross bracing, end diaphragms), green pass / red hatched fail / grey no-data, red dashed UR\,=\,1.0 line.\\
+R5 Quantities & Chapter 7: three charts (structural steel MT, concrete m\textsuperscript{3}, reinforcement MT), one unit per chart, from the same numbers as Table 7.1.\\
+R6 Styles & New \f{styles.py} is the single source of page, typography, colour, table, header/footer and chart formatting (Section 3).\\
+Bug A & Girder section dimensions stored in metres after the design run were printed as mm (``1.67 mm''); now converted explicitly (1670 mm).\\
+Bug B & The braking row printed a raw Python exception name; now a plain ``Not available --- reason'' sentence, details in the log.\\
+Bug C & The Executive Summary said ``design pass'' for every component; statuses are now derived from the checks (PASS only if every check has data and UR\,$\le$\,1.0). The demo design correctly reports FAIL.\\
+\end{longtable}
+
+\section{Specific files altered under the report generator directory}
+\begin{longtable}{@{}>{\ttfamily}p{4.8cm}p{12.3cm}@{}}
+\multicolumn{2}{@{}l}{\textit{\f{src/osdagbridge/core/reports/}}}\\
+styles.py \textrm{(new)} & Central formatting configuration (R6).\\
+latex\_tables.py \textrm{(new)} & LongTable builder, column-width fitting, keep-together rules (R1, R2).\\
+report\_data.py \textrm{(new)} & Data layer without LaTeX: selected vehicles, URs, statuses, units, quantities, consistency notes.\\
+charts.py \textrm{(new)} & matplotlib (Agg) UR and quantity charts; framed ``no results'' panel.\\
+report\_generator.py & Preamble from \f{styles}; LaTeX fixes; chart generation with visible placeholders on failure; page numbering.\\
+executive\_summary.py & Derived statuses, per-girder governing checks, consistency notes (Bug C).\\
+chap2.py & Girder dimensions in mm (Bug A); lanes; width-fitted tables.\\
+chap3.py & Vehicle and Footway live-load tables; braking and centrifugal rows (R3, Bug B).\\
+chap4.py & Governing support reactions; table spacing from \f{styles}.\\
+chap5.py & End-diaphragm tables from end-diaphragm data; Section 5.5 UR charts (R4).\\
+chap7.py, chap8.py & Bill of Materials + quantity charts (R5); spacing from \f{styles}.\\
+report\_utils.py & \verb|<=|/\verb|>=| escaping; chart-or-placeholder figure helper.\\
+\multicolumn{2}{@{}l}{\textit{Outside the directory}}\\
+core/boq/boq\_generator.py & \textbf{Approved scope exception}: numeric BOQ output for the charts; crash-barrier area read in m\textsuperscript{2} as the GUI labels it (0.00\,$\to$\,18.14\,m\textsuperscript{3}); girder area from the designed section (32.89\,$\to$\,36.46\,MT).\\
+tests/, scripts/report\_harness/ & Unit, regression and PDF-level tests with a real-data fixture; GUI-driving report harness.\\
+\end{longtable}
+
+\needspace{14\baselineskip}
+\section{Structure of the centralized formatting module \f{styles.py}}
+\noindent\begin{tabular}{@{}>{\ttfamily\raggedright}p{4.5cm}>{\raggedright}p{6.0cm}>{\raggedright\arraybackslash}p{6.0cm}@{}}
+\textrm{\textbf{Section}} & \textbf{Controls} & \textbf{Consumed by}\\ \hline
+PAGE, geometry\_options() & paper, margins, reserved head/foot space & report preamble; table width fitting\\
+TYPOGRAPHY & font size, line stretch, emergency stretch & preamble; table builder\\
+COLORS, LATEX\_COLOR\_NAMES, CHART\_PALETTE & brand, table header, pass/fail/no-data colours & preamble colour definitions; charts\\
+TABLE, latex\_table\_settings() & cell padding, row height, rules, longtable spacing, chunk size, compact/dense overrides & preamble; \f{latex\_tables}; chapters 3, 4, 7, 8\\
+HEADER\_FOOTER & running head, footer text ``Page X of Y'', rules & preamble (fancyhdr)\\
+FIGURES & figure widths and placement & chapters 5 and 7\\
+CHART, matplotlib\_rc() & chart size, dpi, fonts, grid, UR\,=\,1.0 line & \f{charts.py}\\
+\end{tabular}\par
+\vspace{-4pt}
+\f{styles.py} imports nothing from \f{osdagbridge}, so it cannot create circular imports; tests check that a changed value reaches the generated LaTeX.
+
+\section{Rationale for architectural and styling choices}
+\begin{itemize}
+\item \textbf{One data layer.} The Executive Summary, Table 5.28 and the Section 5.5 charts read the same \f{report\_data} values, so they cannot disagree.
+\item \textbf{A table builder instead of hand-written longtables.} One function gives every table the same head/foot behaviour; a layout fix applies to all tables at once.
+\item \textbf{One style source.} Formatting changes in one file instead of eight chapter modules.
+\item \textbf{Honest charts.} One unit per chart; missing values are labelled, never drawn as a bar or counted as passing.
+\item \textbf{Disclose, don't patch.} Problems in the analysis/design modules are reported in the PDF, not silently changed by the report code.
+\end{itemize}
+
+\section{Visual enhancements and open polish}
+\textbf{Done:} shaded table headers; pass/fail/no-data bar colours with value labels; failing URs in red; framed ``no results'' chart panel; visible placeholder when a chart cannot be generated; Data Consistency Notes box; unnumbered title page with ``Page X of Y'' equal to the PDF page; no table wider than the page.\\
+\textbf{Open polish:} 11 overfull hboxes ($\le$\,5.1\,pt, single words such as ``Diagonal'' in narrow cells) and 2 overfull vboxes (5.4\,pt) remain, because removing them would change column widths; some pages end with white space where a girder group or section is kept together; chapter templates are still large raw-LaTeX strings.
+
+\section{Known limitations}
+\begin{itemize}
+\item \textbf{Upstream defects disclosed, not fixed:} D-04 (6 design members for a 4-girder bridge), D-05 (cross-bracing spacing 15\,m input vs 3\,m used), D-06 (analysis vs designed section), D-17 (two deflection results disagree), D-18 (IRC 6 braking function fails for 1--2 lanes), D-19 (analysis ignores the vehicle checkboxes).
+\item \textbf{End diaphragms:} no end-diaphragm UR results exist for the demo design (Figure 5.4 says why), and their tonnage cannot be computed for cross-bracing frames.
+\item \textbf{Values not provided by the pipeline} are printed as ``Not available'' with a reason (braking force, seismic forces); centrifugal force is shown as not applicable because the modelled bridge is straight in plan.
+\item \textbf{Verification scope:} one demonstration case, not a real project, was run end to end; the GUI was driven by code with dialogs bypassed, not clicked by hand.
+\item \textbf{Scope exception:} \f{boq\_generator.py} outside the report directory was changed for quantity take-off (approved and disclosed above).
+\end{itemize}
+\end{document}

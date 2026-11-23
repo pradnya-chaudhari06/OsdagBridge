@@ -18,6 +18,7 @@ dependencies:
   - scipy>=1.10.1
   - pydantic
   - xarray
+  - pylatex          # report tables (LongTable); also pulled in by osdag::osdag
 
   # development install
   - pip

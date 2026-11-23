@@ -119,6 +119,7 @@ from osdagbridge.core.utils.common import (
 )
 
 from osdagbridge.core.reports.report_utils import _tex
+from osdagbridge.core.reports import styles
 from .executive_summary import executive_summary
 from .chap1 import ch1_project_info
 from .chap2 import ch2_input_parameters
@@ -129,8 +130,6 @@ from .chap6 import ch6_drawings
 from .chap7 import ch7_quantities
 from .chap8 import ch8_design_log
 from .chap9 import references
-from . import styles
-from .table_utils import apply_longtable_headers
 
 logger = logging.getLogger(__name__)
 
@@ -150,8 +149,133 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def preamble(project_name, job_number, report_date, report_version='Rev 0'):
-    return styles.build_preamble(_tex(project_name), _tex(job_number),
-                                 _tex(report_date), _tex(report_version))
+    pn = _tex(project_name)
+    jn = _tex(job_number)
+    rd = _tex(report_date)
+    rv = _tex(report_version)
+    return r"""
+\documentclass[""" + styles.TYPOGRAPHY['base_font_size'] + "," + styles.PAGE['paper'] + r"""]{""" + styles.TYPOGRAPHY['document_class'] + r"""}
+
+% Packages
+% Page geometry comes from styles.PAGE: header and footer heights are reserved
+% explicitly (includehead/includefoot), so running heads/feet never overlap
+% the text block.
+\usepackage[""" + styles.geometry_options() + r"""]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\usepackage{setspace}
+\usepackage{enumitem}
+\usepackage{caption}
+
+\captionsetup{
+    labelfont=bf,
+    justification=raggedright,
+    singlelinecheck=false,
+    format=plain
+}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage{colortbl}
+\usepackage{longtable}
+\setlength{\LTleft}{\fill}
+\setlength{\LTright}{\fill}
+\usepackage{titlesec}
+\usepackage{titletoc}
+\usepackage{lastpage}
+\usepackage{makecell}
+\usepackage{etoolbox}
+\usepackage{needspace}
+
+\numberwithin{table}{chapter}
+\numberwithin{figure}{chapter}
+% Table layout and spacing: consistent padding, row height, and longtable pre/post skips
+% (values from styles.TABLE -- single source of truth)
+""" + styles.latex_table_settings() + r"""
+
+% A partial rule (\cline) is set as its own table line followed by
+% \vskip-\arrayrulewidth; that glue is a legal page break, so a page could
+% break right after a \cline -- in the middle of a \multirow girder group,
+% pushing the group label into the footer.  Forbid a break at that point.
+\makeatletter
+\patchcmd{\@cline}{\noalign{\vskip-\arrayrulewidth}}{\noalign{\nobreak\vskip-\arrayrulewidth}}{}{\typeout{OsdagBridge: cline patch not applied}}
+\makeatother
+
+% Prevent (float) tables from starting at the very bottom of a page:
+% if fewer than N baseline-skips remain, break to the next page first.
+% NOTE: deliberately NOT applied to longtable.  A \needspace break issued
+% right before a longtable is processed by longtable's own output routine,
+% which then prints the "continued" foot alone on the old page and both the
+% continued and the first heading on the new page.  longtable already moves
+% its heading + first row to the next page when they do not fit.
+\BeforeBeginEnvironment{table}{\needspace{""" + str(styles.TABLE['min_space_before_table_lines']) + r"""\baselineskip}}
+
+% Report colours (styles.COLORS / styles.LATEX_COLOR_NAMES)
+""" + styles.latex_color_definitions() + r"""
+
+% Header / footer (styles.HEADER_FOOTER).  The optional "* Software default
+% value" note is part of the footer block, inside the space reserved by
+% \footskip, instead of being pulled up into the text area with a negative
+% \vspace (which made it overlap the last table row of the page).
+\fancypagestyle{main}{
+  \fancyhf{}
+  \fancyhead[L]{""" + pn + r""" $|$ """ + jn + r"""}
+  \fancyhead[R]{""" + rd + r""" $|$ """ + rv + r"""}
+  \fancyfoot[L]{""" + styles.HEADER_FOOTER['footer_left'] + r"""}
+  \fancyfoot[R]{""" + styles.HEADER_FOOTER['footer_right'] + r"""}
+  """ + styles.latex_head_rule() + r"""
+  """ + styles.latex_fancy_footer_rule() + r"""
+}
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyhead[L]{""" + pn + r""" $|$ """ + jn + r"""}
+  \fancyhead[R]{""" + rd + r""" $|$ """ + rv + r"""}
+  \fancyfoot[L]{""" + styles.HEADER_FOOTER['footer_left'] + r"""}
+  \fancyfoot[R]{""" + styles.HEADER_FOOTER['footer_right'] + r"""}
+  """ + styles.latex_head_rule() + r"""
+  """ + styles.latex_fancy_footer_rule() + r"""
+}
+\fancypagestyle{firstpage}{
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0pt}
+  \fancyfoot[L]{""" + styles.HEADER_FOOTER['footer_left'] + r"""}
+  % No page number printed on the title page (it is page 1; numbering
+  % continues at 2 after the titlepage environment, see title_page()).
+  \fancyfoot[R]{}
+  \renewcommand{\footrule}{{\color{""" + styles.HEADER_FOOTER['rule_color'] + r"""}\hrule width\headwidth height """ + str(styles.HEADER_FOOTER['foot_rule_pt']) + r"""pt}\vskip """ + str(styles.HEADER_FOOTER['rule_to_text_pt']) + r"""pt}
+}
+\pagestyle{main}
+\setstretch{""" + str(styles.TYPOGRAPHY['line_stretch']) + r"""}
+\setlength{\emergencystretch}{""" + styles.TYPOGRAPHY['emergency_stretch'] + r"""}
+
+% Custom Commands
+\newcommand{\placeholder}[1]{\textit{\textless #1\textgreater}}
+\newcommand{\todo}[1]{\colorbox{yellow}{TODO: #1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+
+% Software-default asterisk
+\newcommand{\sdstar}{\textsuperscript{*}}
+\newbool{hasSDonPage}
+\boolfalse{hasSDonPage}
+\newcommand{\markSD}{\global\booltrue{hasSDonPage}}
+\renewcommand{\sdstar}{\textsuperscript{*}\markSD{}}
+\AddToHook{shipout/before}{\global\boolfalse{hasSDonPage}}
+
+\title{\Large\textbf{OsdagBridge} \\ \normalsize Open Source Software for Steel Girder Bridge Design \\ \vspace{2cm} \large Design Report}
+\author{}
+\date{}
+
+\begin{document}
+"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -213,6 +337,10 @@ def title_page(m, osdag_logo, org_logo):
 \hline
 \end{tabular}
 \end{titlepage}
+% The report class resets the page counter to 1 after titlepage; continue at
+% 2 so that "Page X of Y" equals the PDF page number (title page = page 1,
+% printed without a number) and Y equals the PDF page count.
+\setcounter{page}{2}
 """
 
 
@@ -470,8 +598,8 @@ class ReportDataBridge:
             if val is not None:
                 ur = float(val)
                 if ur <= 1.0:
-                    return r"\textcolor{osdagPass}{PASS}"
-                return r"\textcolor{osdagFail}{FAIL}"
+                    return r"\textcolor{black}{PASS}"
+                return r"\textcolor{red}{FAIL}"
         except (TypeError, ValueError):
             pass
         return ""
@@ -509,130 +637,6 @@ class ReportDataBridge:
             return f"{self.get_cb_geometry().get('alpha_deg', 0):.2f}"
         except Exception:
             return ""
-
-    # ---- End diaphragm accessors (kept separate from the cross-bracing ones) ----
-    def _ed_forces_dict(self) -> dict:
-        return self.output_dict.get("end_diaphragm_forces_dict", {}) or {}
-
-    def _ed_pair_designs(self) -> dict:
-        return self.output_dict.get("end_diaphragm_design_results", {}) or {}
-
-    def _ed_pair_forces(self, pair: str) -> dict:
-        try:
-            return self._ed_forces_dict()["pairs"][pair] or {}
-        except (KeyError, TypeError):
-            return {}
-
-    def _ed_type_lookup(self) -> dict:
-        # {(i, j): type}. Real input keys: ...end_diaphragm_details.type.G1G2.E1M1 (or M2);
-        # backend output keys: ...end_diaphragm_details.G1G2.type. Empty / None values are ignored.
-        import re as _re
-        res = {}
-        for src in (self.output_dict, self.input_dict):
-            for k, v in src.items():
-                if not v:
-                    continue
-                ks = str(k)
-                m = (_re.search(r"end_diaphragm_details\.G(\d+)G(\d+)\.type$", ks)
-                     or _re.search(r"end_diaphragm_details\.type\.G(\d+)G(\d+)\.E\d+M\d+$", ks))
-                if m:
-                    res.setdefault((int(m.group(1)), int(m.group(2))), str(v))
-        return res
-
-    def get_ed_pairs(self) -> list:
-        import re as _re
-        found = set(self._ed_type_lookup())
-        try:
-            for pr in self._ed_forces_dict().get("pairs", {}):
-                m = _re.match(r"G(\d+)-G(\d+)$", str(pr))
-                if m:
-                    found.add((int(m.group(1)), int(m.group(2))))
-        except Exception:
-            pass
-        return ["G%d-G%d" % t for t in sorted(found)]
-
-    def get_ed_type(self, pair: str) -> str:
-        import re as _re
-        m = _re.match(r"G(\d+)-G(\d+)$", str(pair))
-        if not m:
-            return ""
-        return self._ed_type_lookup().get((int(m.group(1)), int(m.group(2))), "")
-
-    def ed_is_cross_bracing(self, pair: str) -> bool:
-        return "brac" in self.get_ed_type(pair).strip().lower()
-
-    def get_ed_force(self, pair: str, member: str, force_type: str) -> str:
-        pfx = "diag" if member == "diagonal" else "chord"
-        val = self._ed_pair_forces(pair).get("%s_%s_kN" % (pfx, force_type))
-        return "%.3f" % val if val is not None else ""
-
-    def get_ed_governing_force(self, pair: str, member: str) -> tuple:
-        pfx = "diag" if member == "diagonal" else "chord"
-        f = self._ed_pair_forces(pair)
-        t_val = f.get("%s_tension_kN" % pfx)
-        c_val = f.get("%s_compression_kN" % pfx)
-        if t_val is not None and c_val is not None:
-            if abs(c_val) >= abs(t_val):
-                return ("%.3f" % c_val, "compression")
-            return ("%.3f" % t_val, "tension")
-        if c_val is not None:
-            return ("%.3f" % c_val, "compression")
-        if t_val is not None:
-            return ("%.3f" % t_val, "tension")
-        return ("", "compression")
-
-    def get_ed_gov_lc(self, pair: str, member: str, force_type: str) -> str:
-        pfx = "diag" if member == "diagonal" else "chord"
-        val = self._ed_pair_forces(pair).get("%s_%s_gov_lc" % (pfx, force_type))
-        return _tex(val) if val else ""
-
-    def _ed_osdag(self, pair: str, member: str, force_type: str) -> dict:
-        from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
-        try:
-            raw = self._ed_pair_designs()[pair][member][force_type]
-            return _extract_osdag_summary(raw or {})
-        except (KeyError, TypeError):
-            return {}
-
-    def get_ed_section(self, pair: str, member: str, force_type: str) -> str:
-        val = self._ed_osdag(pair, member, force_type).get("section")
-        return _tex(val) if val else ""
-
-    def get_ed_capacity(self, pair: str, member: str, force_type: str) -> str:
-        val = self._ed_osdag(pair, member, force_type).get("capacity_kN")
-        return "%.3f" % float(val) if val is not None else ""
-
-    def get_ed_efficiency(self, pair: str, member: str, force_type: str) -> str:
-        val = self._ed_osdag(pair, member, force_type).get("efficiency")
-        return "%.3f" % float(val) if val is not None else ""
-
-    def get_ed_slenderness(self, pair: str, member: str) -> str:
-        for ft in ("compression", "tension"):
-            val = self._ed_osdag(pair, member, ft).get("slenderness")
-            if val is not None:
-                return "%.1f" % float(val)
-        return ""
-
-    def get_ed_status(self, pair: str, member: str, force_type: str) -> str:
-        try:
-            val = self._ed_osdag(pair, member, force_type).get("efficiency")
-            if val is not None:
-                if float(val) <= 1.0:
-                    return r"\textcolor{osdagPass}{PASS}"
-                return r"\textcolor{osdagFail}{FAIL}"
-        except (TypeError, ValueError):
-            pass
-        return ""
-
-    def get_ed_connection(self, pair: str, member: str, force_type: str) -> str:
-        val = self._ed_osdag(pair, member, force_type).get("connection")
-        return str(val) if val else ""
-
-    def get_ed_prop(self, pair: str, key: str):
-        # Section property for Rolled / Welded / bracing members, e.g. key "A" or "rv" (None if absent)
-        return self.output_dict.get(
-            "transverse_member_design.ed.section_properties.end_diaphragm.%s.%s"
-            % (pair.replace("-", ""), key))
 
 def _format_project_location(pl_data):
     if not pl_data:
@@ -834,6 +838,73 @@ _FIGURE_MAP = [
     ('defl_ll',               'defl_ll.png'),
 ]
 
+def _build_report_charts(payload, quantities, chart_dir):
+    """Create the Section 5.5 UR charts and the Chapter 7 quantity charts.
+
+    Returns ``(ur_figures, qty_paths, qty_groups)`` where ``ur_figures`` is a
+    list of ``(path, caption, note)``.  Chart problems never stop the report
+    and are never silent: a chart that cannot be drawn (matplotlib missing or
+    an exception while drawing) keeps its place with ``path = None``, a warning
+    is logged, and the chapter prints a visible placeholder that points to the
+    table holding the same values (Table 5.28 / Table 7.1).
+    """
+    from osdagbridge.core.reports.report_data import (
+        collect_utilization, material_quantity_groups,
+    )
+    ur_figures, qty_paths, qty_groups = [], [], []
+    try:
+        from osdagbridge.core.reports.charts import quantity_chart, utilization_chart
+    except Exception as exc:
+        logger.warning("Report charts cannot be generated (matplotlib / chart module "
+                       "unavailable: %s); placeholders are printed instead.", exc)
+        quantity_chart = utilization_chart = None
+
+    os.makedirs(chart_dir, exist_ok=True)
+
+    try:
+        summary = collect_utilization(payload.inputs, payload.output_dict)
+        categories = summary.categories()
+        ed_reason = summary.end_diaphragm_reason
+    except Exception as exc:
+        logger.warning("Utilization data could not be collected for the charts: %s", exc, exc_info=True)
+        categories, ed_reason = [], ""
+    for key, title, items in categories:
+        note = ed_reason if (key == "end_diaphragms" and not items) else ""
+        caption = r"Utilization Ratio --- " + _tex(title)
+        path = os.path.join(chart_dir, f"ur_{key}.png")
+        try:
+            if utilization_chart is None:
+                raise RuntimeError("chart module unavailable")
+            utilization_chart(items, f"Utilization Ratio --- {title}".replace("---", "—"),
+                              path, no_data_message=note or None)
+            ur_figures.append((path.replace('\\', '/'), caption, note))
+        except Exception as exc:
+            logger.warning("UR chart '%s' could not be generated: %s", title, exc,
+                           exc_info=utilization_chart is not None)
+            ur_figures.append((None, caption, note))
+
+    try:
+        groups = material_quantity_groups(quantities)
+    except Exception as exc:
+        logger.warning("Material quantities could not be collected for the charts: %s", exc, exc_info=True)
+        groups = []
+    for i, grp in enumerate(groups):
+        path = os.path.join(chart_dir, f"qty_{i + 1}.png")
+        try:
+            if quantity_chart is None:
+                raise RuntimeError("chart module unavailable")
+            quantity_chart(grp.labels, grp.values, grp.unit, grp.title, path,
+                           axis_label=grp.axis_label)
+            qty_paths.append(path.replace('\\', '/'))
+        except Exception as exc:
+            logger.warning("Quantity chart '%s' could not be generated: %s", grp.title, exc,
+                           exc_info=quantity_chart is not None)
+            qty_paths.append(None)
+        qty_groups.append(grp)
+
+    return ur_figures, qty_paths, qty_groups
+
+
 def generate_report(payload, request):
     # type: (ReportPayload, ReportRequest) -> ReportResult
     """Compile the full OsdagBridge Design Report to PDF (+ .tex source)."""
@@ -900,6 +971,12 @@ def generate_report(payload, request):
             quantities = calculate_material_quantities(payload.inputs, payload.output_dict)
             payload.inputs.update(quantities)
 
+            # ── Charts (Section 5.5 UR charts, Chapter 7 quantity charts) ──
+            # Generated from the design results into tmp_dir/images/charts, so
+            # they are removed together with the temporary directory.
+            ur_figures, qty_paths, qty_groups = _build_report_charts(
+                payload, quantities, os.path.join(tmp_images, 'charts'))
+
             # ── Assemble LaTeX document (fig_paths now has tmp_dir paths) ──
             bridge = ReportDataBridge(payload.output_dict, payload.inputs, payload)
             span_m = float(payload.inputs.get(KEY_SPAN, 0) or 0)
@@ -925,11 +1002,11 @@ def generate_report(payload, request):
             if 'analysis' in secs:
                 doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge, span_m))
             if 'design_checks' in secs:
-                doc_parts.append(ch5_design_checks(payload.design_checks, bridge, tmp_images))
+                doc_parts.append(ch5_design_checks(payload.design_checks, bridge, ur_figures=ur_figures))
             if 'drawings' in secs and payload.options.include_figures:
                 doc_parts.append(ch6_drawings(fig_paths))
 
-            doc_parts.append(ch7_quantities(payload.inputs, tmp_images))
+            doc_parts.append(ch7_quantities(payload.inputs, chart_paths=qty_paths, chart_groups=qty_groups))
 
             mode = str(payload.inputs.get(KEY_DESIGN_MODE, "Optimized")).strip().lower()
             is_custom = mode in {"custom", "customized"}
@@ -943,10 +1020,10 @@ def generate_report(payload, request):
             full_tex = "\n".join(doc_parts)
 
 
-            # Repeat caption + column headings on every page of every longtable.
-            # Conservative: only tables with the standard shape are rewritten.
-            full_tex, _lt_changed, _lt_total = apply_longtable_headers(full_tex)
-            logger.info("longtable headers repeated on %d of %d tables", _lt_changed, _lt_total)
+            # NOTE: longtable header repetition is handled per-table in each
+            # chapter file (e.g. \endfirsthead / \endhead).  No automatic
+            # post-processing is applied here to avoid mis-ordering captions
+            # and column headings.
 
             tmp_tex = os.path.join(tmp_dir, request.file_stem + '.tex')
             tmp_pdf = os.path.join(tmp_dir, request.file_stem + '.pdf')
@@ -978,6 +1055,18 @@ def generate_report(payload, request):
                 shutil.copy2(tmp_tex, tex_path)
             if os.path.exists(tmp_pdf):
                 shutil.copy2(tmp_pdf, pdf_path)
+                # Opt-in diagnostics: OSDAGBRIDGE_REPORT_KEEP_LOG=1 keeps the
+                # LaTeX log next to the PDF (used by the QA scripts/tests).
+                if os.environ.get('OSDAGBRIDGE_REPORT_KEEP_LOG') == '1':
+                    tmp_log = os.path.join(tmp_dir, request.file_stem + '.log')
+                    if os.path.exists(tmp_log):
+                        shutil.copy2(tmp_log, os.path.join(request.output_dir, request.file_stem + '.log'))
+            else:
+                # Keep the evidence needed for debugging next to the .tex:
+                # the LaTeX log (the temporary directory is deleted on exit).
+                tmp_log = os.path.join(tmp_dir, request.file_stem + '.log')
+                if os.path.exists(tmp_log):
+                    shutil.copy2(tmp_log, os.path.join(request.output_dir, request.file_stem + '.log'))
 
         if os.path.exists(pdf_path):
             logger.info("Report generated: %s", pdf_path)

@@ -1,184 +1,233 @@
-r"""Matplotlib chart helpers for the report (UR bars and material quantities).
+# =============================================================================
+# OsdagBridge Report — chart generation (matplotlib, headless "Agg" backend)
+# =============================================================================
+# Turns the numbers prepared by ``report_data`` into PNG files.  This module
+# knows nothing about LaTeX; the report generator decides where the images go
+# and embeds them as figures.
+#
+#   * utilization_chart() — bar chart of Utilization Ratio (UR) per check with
+#     a red dashed reference line at UR = 1.0; passing bars (UR <= 1.0) and
+#     failing bars (UR > 1.0) use different colours and hatching, and checks
+#     without valid data are listed as "no data" (never drawn as passing).
+#   * quantity_chart()    — bar chart of one material quantity (single unit
+#     per chart, so different units are never compared on one axis).
+# =============================================================================
 
-Uses the object-oriented Agg API (no pyplot), so it is safe in the GUI's
-worker thread. Every function returns the saved path, or None when there is
-no numeric data to plot (the caller then skips the figure).
-"""
-import re
+from __future__ import annotations
+
+import os
 import textwrap
+from typing import Optional, Sequence
 
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.figure import Figure
+import matplotlib
 
-from . import styles
+matplotlib.use("Agg")  # no display needed; safe inside the report worker thread
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 
+from osdagbridge.core.reports import styles  # noqa: E402
+from osdagbridge.core.reports.report_data import FAIL, NO_DATA  # noqa: E402
 
-def to_float(v):
-    """Number from a value or a string such as '12.5 kN' or '1,250'; None if absent or 'N.A.'."""
-    if v is None:
-        return None
-    if isinstance(v, (int, float)):
-        return float(v) if v == v else None
-    m = re.search(r"-?\d+(?:\.\d+)?", str(v).replace(",", ""))
-    return float(m.group()) if m else None
+__all__ = ["utilization_chart", "build_utilization_figure", "build_ur_no_data_figure", "quantity_chart"]
 
 
-def _new_fig(ncols=1):
-    fig = Figure(figsize=styles.CHART_FIGSIZE)
-    FigureCanvasAgg(fig)
-    axes = fig.subplots(1, ncols) if ncols > 1 else [fig.add_subplot(111)]
-    for ax in axes:
-        ax.tick_params(labelsize=styles.CHART_FONT_SIZE)
-        ax.grid(axis="y", linestyle=":", alpha=0.5)
-        ax.set_axisbelow(True)
-        for side in ("top", "right"):
-            ax.spines[side].set_visible(False)
-    return fig, axes
+def _short(label: str, n: int | None = None) -> str:
+    n = n or styles.CHART["max_label_chars"]
+    return label if len(label) <= n else label[: n - 1] + "…"
 
 
-def _save(fig, path):
-    fig.savefig(path, dpi=styles.CHART_DPI, bbox_inches="tight")
+def _save(fig, path: str) -> str:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    fig.savefig(path, dpi=styles.CHART["dpi"], bbox_inches="tight",
+                pad_inches=styles.CHART["tight_pad"], facecolor="white")
+    plt.close(fig)
     return path
 
 
-def _wrap(label, width=14):
-    return textwrap.fill(str(label), width)
+def _no_data_figure(title: str, message: str, path: str) -> str:
+    """Placeholder chart that states clearly why there are no bars."""
+    with plt.rc_context(styles.matplotlib_rc()):
+        fig, ax = plt.subplots(figsize=(styles.CHART["figsize_in"][0], 1.6))
+        ax.axis("off")
+        ax.set_title(title, loc="left", fontweight="bold")
+        ax.text(0.5, 0.45, message, ha="center", va="center", wrap=True,
+                fontsize=styles.CHART["label_size"], color=styles.hex_color("muted"),
+                transform=ax.transAxes)
+        return _save(fig, path)
 
 
-def ur_bar_chart(items, out_path, title=None):
-    """items: [(label, UR)]. Red dashed line at UR = 1.0; bars above 1.0 are red."""
-    pts = [(l, to_float(u)) for l, u in items]
-    pts = [(l, u) for l, u in pts if u is not None]
-    if not pts:
-        return None
-    fig, (ax,) = _new_fig()
-    labels = [_wrap(l) for l, _ in pts]
-    urs = [u for _, u in pts]
-    colors = [styles.CHART_FAIL_COLOR if u > 1.0 else styles.CHART_OK_COLOR for u in urs]
-    bars = ax.bar(labels, urs, color=colors, width=0.55)
-    ax.axhline(1.0, color=styles.CHART_LIMIT_COLOR, linestyle="--", linewidth=1.4,
-               label="UR = 1.0")
-    for b, u in zip(bars, urs):
-        ax.text(b.get_x() + b.get_width() / 2, u, f"{u:.2f}", ha="center",
-                va="bottom", fontsize=styles.CHART_FONT_SIZE)
-    ax.set_ylim(0, max(1.2, max(urs) * 1.15))
-    ax.set_ylabel("Utilization ratio (demand / capacity)", fontsize=styles.CHART_FONT_SIZE)
-    ax.legend(loc="upper right", fontsize=styles.CHART_FONT_SIZE - 1)
-    if title:
-        ax.set_title(title, fontsize=styles.CHART_FONT_SIZE + 1)
-    return _save(fig, out_path)
+def build_ur_no_data_figure(title: str, message: str):
+    """UR chart panel for an element WITHOUT design results.
+
+    A deliberate, framed panel instead of an empty space: it keeps the UR axis,
+    the axis label and the red dashed UR = 1.0 limit line, draws no bars, and
+    states in a box why there are no results.  Nothing is plotted that could be
+    read as a value.
+    """
+    c = styles.CHART
+    with plt.rc_context(styles.matplotlib_rc()):
+        fig, ax = plt.subplots(figsize=(c["figsize_in"][0], c["figsize_in"][1]))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, c["ref_line_value"] * 1.25)
+        ax.set_xticks([])
+        ax.set_ylabel(c["ur_axis_label"])
+        ax.set_title(title, loc="left", fontweight="bold")
+        for side in ("top", "right", "bottom", "left"):
+            ax.spines[side].set_visible(True)
+            ax.spines[side].set_color(styles.hex_color("muted"))
+        if c["grid"]:
+            ax.grid(axis="y", color=c["grid_color"], linestyle=c["grid_linestyle"],
+                    linewidth=c["grid_linewidth"], zorder=0)
+        ax.axhline(c["ref_line_value"], color=c["ref_line_color"],
+                   linestyle=c["ref_line_style"], linewidth=c["ref_line_width"], zorder=4)
+        # explicit wrapping: matplotlib's wrap=True wraps to the figure width,
+        # which let the box run over the axis label
+        body = textwrap.fill(message, width=c.get("no_data_wrap_chars", 58))
+        ax.text(0.5, 0.45, "No design results available\n\n" + body,
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=c["label_size"], color=styles.hex_color("muted"), zorder=5,
+                bbox=dict(boxstyle="round,pad=0.6", facecolor="white",
+                          edgecolor=styles.hex_color("muted"), linewidth=0.8))
+        handles = [Line2D([0], [0], color=c["ref_line_color"], linestyle=c["ref_line_style"],
+                          linewidth=c["ref_line_width"], label=c["ref_line_label"])]
+        ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.0, 1.0), frameon=False)
+        return fig
 
 
-def quantity_bar_chart(items, ylabel, out_path, title=None, color=None):
-    """items: [(label, value)] in one unit. Entries without a number are skipped."""
-    pts = [(l, to_float(v)) for l, v in items]
-    pts = [(l, v) for l, v in pts if v is not None]
-    if not pts:
-        return None
-    fig, (ax,) = _new_fig()
-    bars = ax.bar([_wrap(l, 16) for l, _ in pts], [v for _, v in pts],
-                  color=color or styles.CHART_STEEL_COLOR, width=0.5)
-    top = max(v for _, v in pts)
-    for b, (_, v) in zip(bars, pts):
-        ax.text(b.get_x() + b.get_width() / 2, v, f"{v:,.2f}", ha="center",
-                va="bottom", fontsize=styles.CHART_FONT_SIZE)
-    ax.set_ylim(0, top * 1.15 if top > 0 else 1)
-    ax.set_ylabel(ylabel, fontsize=styles.CHART_FONT_SIZE)
-    if title:
-        ax.set_title(title, fontsize=styles.CHART_FONT_SIZE + 1)
-    return _save(fig, out_path)
+def utilization_chart(items: Sequence, title: str, path: str,
+                      no_data_message: Optional[str] = None) -> str:
+    """Draw a Utilization Ratio bar chart and save it as PNG at *path*.
+
+    Parameters
+    ----------
+    items : sequence of report_data.URItem
+        One bar per item (``item.label``, ``item.ur``, ``item.status``).
+    title : str
+        Chart title (structural element).
+    path : str
+        Output PNG path.
+    no_data_message : str, optional
+        Text shown when *items* is empty.
+    """
+    if not items:
+        fig = build_ur_no_data_figure(title, no_data_message or "No design check results available.")
+        with plt.rc_context(styles.matplotlib_rc()):
+            return _save(fig, path)
+    with plt.rc_context(styles.matplotlib_rc()):
+        return _save(build_utilization_figure(items, title), path)
 
 
-def concrete_rebar_chart(vol, vol_unit, wt, wt_unit, out_path, title=None):
-    """Concrete volume and reinforcement weight in two panels (different units)."""
-    v, w = to_float(vol), to_float(wt)
-    if v is None and w is None:
-        return None
-    fig, axes = _new_fig(2)
-    for ax, label, val, unit, col in (
-        (axes[0], "Concrete (deck slab)", v, vol_unit, styles.CHART_CONCRETE_COLOR),
-        (axes[1], "Reinforcement steel", w, wt_unit, styles.CHART_REBAR_COLOR),
-    ):
-        if val is None:
-            ax.text(0.5, 0.5, "N.A.", ha="center", va="center", transform=ax.transAxes)
-            ax.set_xticks([])
-            ax.set_yticks([])
-            continue
-        ax.bar([_wrap(label, 16)], [val], color=col, width=0.4)
-        ax.text(0, val, f"{val:,.2f}", ha="center", va="bottom", fontsize=styles.CHART_FONT_SIZE)
-        ax.set_ylim(0, val * 1.15 if val > 0 else 1)
-        ax.set_ylabel(unit, fontsize=styles.CHART_FONT_SIZE)
-    if title:
-        fig.suptitle(title, fontsize=styles.CHART_FONT_SIZE + 1)
-    fig.tight_layout()
-    return _save(fig, out_path)
+def build_utilization_figure(items: Sequence, title: str):
+    """Return the matplotlib Figure of a UR bar chart (not saved, not closed)."""
+    c = styles.CHART
+    labels = [_short(it.label) for it in items]
+    values, colors, hatches = [], [], []
+    for it in items:
+        if it.status == NO_DATA or it.ur is None:
+            values.append(0.0)
+            colors.append(styles.hex_color("no_data"))
+            hatches.append("")
+        elif it.status == FAIL:
+            values.append(it.ur)
+            colors.append(styles.hex_color("fail"))
+            hatches.append("///")
+        else:
+            values.append(it.ur)
+            colors.append(styles.hex_color("pass"))
+            hatches.append("")
+
+    n = len(items)
+    # Keep the drawing at (about) the printed width so fonts stay readable
+    # after LaTeX scales the image to \textwidth; many bars -> taller figure
+    # with steeper labels instead of a wider one.
+    many = n > 10
+    width = c["figsize_in"][0] + (1.2 if many else 0.0)
+    height = c["figsize_tall_in"][1] + (0.8 if n > 16 else 0.0) if many else c["figsize_in"][1]
+    valid = [v for v, it in zip(values, items) if it.status != NO_DATA and it.ur is not None]
+    ymax = max([c["ref_line_value"]] + valid) * 1.18
+
+    with plt.rc_context(styles.matplotlib_rc()):
+        fig, ax = plt.subplots(figsize=(width, height))
+        x = list(range(n))
+        bars = ax.bar(x, values, width=c["bar_width"], color=colors,
+                      edgecolor=c["bar_edge_color"], linewidth=c["bar_edge_width"],
+                      zorder=3)
+        for bar, h in zip(bars, hatches):
+            if h:
+                bar.set_hatch(h)
+        ax.axhline(c["ref_line_value"], color=c["ref_line_color"],
+                   linestyle=c["ref_line_style"], linewidth=c["ref_line_width"], zorder=4)
+
+        for xi, it, v in zip(x, items, values):
+            if it.status == NO_DATA or it.ur is None:
+                ax.text(xi, ymax * 0.02, "no data", rotation=90, ha="center", va="bottom",
+                        fontsize=c["annotation_size"], color=styles.hex_color("muted"), zorder=5)
+            else:
+                ax.text(xi, v + ymax * 0.012, f"{it.ur:.2f}", ha="center", va="bottom",
+                        fontsize=c["annotation_size"], zorder=5)
+
+        ax.set_xticks(x)
+        rot = (c["tick_rotation_dense"] if many else c["tick_rotation"]) if n > 4 else 0
+        ax.set_xticklabels(labels, rotation=rot, ha="right" if rot else "center")
+        ax.set_ylim(0, ymax)
+        ax.set_ylabel(c["ur_axis_label"])
+        ax.set_title(title, loc="left", fontweight="bold")
+        if c["grid"]:
+            ax.grid(axis=c["grid_axis"], color=c["grid_color"],
+                    linestyle=c["grid_linestyle"], linewidth=c["grid_linewidth"], zorder=0)
+
+        handles = [
+            Patch(facecolor=styles.hex_color("pass"), edgecolor=c["bar_edge_color"], label="Pass (UR ≤ 1.0)"),
+            Patch(facecolor=styles.hex_color("fail"), edgecolor=c["bar_edge_color"], hatch="///", label="Fail (UR > 1.0)"),
+            Line2D([0], [0], color=c["ref_line_color"], linestyle=c["ref_line_style"],
+                   linewidth=c["ref_line_width"], label=c["ref_line_label"]),
+        ]
+        if any(it.status == NO_DATA or it.ur is None for it in items):
+            handles.append(Patch(facecolor=styles.hex_color("no_data"), label="No valid data"))
+        ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.0, 1.0),
+                  frameon=False)
+        return fig
 
 
-import logging as _logging
-import os as _os
+def quantity_chart(labels: Sequence[str], values: Sequence[Optional[float]],
+                   unit: str, title: str, path: str,
+                   axis_label: Optional[str] = None,
+                   no_data_message: Optional[str] = None) -> str:
+    """Draw a bar chart for one material quantity measured in *unit*.
 
-_log = _logging.getLogger(__name__)
+    Categories whose value is None are drawn as "not available" (no bar).
+    """
+    c = styles.CHART
+    if not labels or all(v is None for v in values):
+        return _no_data_figure(title, no_data_message or "Quantity not available for this design.", path)
 
+    n = len(labels)
+    cols = styles.palette(n)
+    plotted = [v if v is not None else 0.0 for v in values]
+    vmax = max([v for v in values if v is not None] + [0.0])
+    ymax = vmax * 1.2 if vmax > 0 else 1.0
 
-def _figure_tex(path, caption):
-    return ("\n\\begin{figure}[htbp]\n\\centering\n"
-            "\\includegraphics[width=0.9\\textwidth]{" + str(path).replace("\\", "/") + "}\n"
-            "\\caption{" + caption + "}\n\\end{figure}\n")
-
-
-def ur_summary_figure(ur_log, chart_dir):
-    """LaTeX for the Section 5.5 UR chart, built from (row label, UR cell) pairs. '' if no data."""
-    if not chart_dir:
-        return ""
-    try:
-        groups = {"Steel Plate Girders": [], "Concrete Deck Slab": [], "Cross Bracing": [], "End Diaphragms": []}
-        for label, cell in ur_log:
-            m = re.search(r"\d+\.\d+", str(cell))
-            if not m:
-                continue
-            v, l = float(m.group()), str(label)
-            if l.startswith("Girder"):
-                groups["Steel Plate Girders"].append(v)
-            elif l.startswith("Deck") or l.startswith("Transverse Shear (slab)") or l.startswith("Crack Width (slab)"):
-                groups["Concrete Deck Slab"].append(v)
-            elif l.startswith("Cross Bracing") and ("Compression" in l or "Tension" in l):
-                groups["Cross Bracing"].append(v)
-            elif l.startswith("End Diaphragm"):
-                groups["End Diaphragms"].append(v)
-        items = [(k, max(v)) for k, v in groups.items() if v]
-        _os.makedirs(chart_dir, exist_ok=True)
-        path = ur_bar_chart(items, _os.path.join(chart_dir, "ur_summary.png"))
-        if not path:
-            return ""
-        return _figure_tex(path, "Governing utilization ratio (UR = demand / capacity) by component; "
-                                 "the red dashed line marks UR = 1.0. End diaphragms are shown for Cross Bracing type only.")
-    except Exception:
-        _log.exception("UR summary chart skipped")
-        return ""
-
-
-def material_figures_latex(input_dict, chart_dir):
-    """LaTeX for the Chapter 7 quantity charts. '' if there is no numeric data."""
-    if not chart_dir:
-        return ""
-    out = ""
-    try:
-        _os.makedirs(chart_dir, exist_ok=True)
-        g = input_dict.get
-        steel = [("Girders", to_float(g("steel_girders_wt_total")))]
-        cb = [to_float(g(k)) for k in ("bracing_top_wt_total", "bracing_bot_wt_total", "bracing_diag_wt_total")]
-        cb = [v for v in cb if v is not None]
-        if cb:
-            steel.append(("Cross bracing", sum(cb)))
-        p = quantity_bar_chart(steel, "Structural steel (MT)", _os.path.join(chart_dir, "qty_steel.png"))
-        if p:
-            out += _figure_tex(p, "Structural steel quantities (MT) from Table 7.1. End diaphragm steel "
-                                  "is not part of the bill of materials and is not shown.")
-        p = concrete_rebar_chart(g("concrete_deck_vol_total"), "Volume (m$^3$)",
-                                 g("rebar_deck_wt_total"), "Weight (MT)",
-                                 _os.path.join(chart_dir, "qty_concrete_rebar.png"))
-        if p:
-            out += _figure_tex(p, "Deck slab concrete volume and reinforcement steel weight from Table 7.1.")
-    except Exception:
-        _log.exception("Material quantity charts skipped")
-    return out
+    with plt.rc_context(styles.matplotlib_rc()):
+        fig, ax = plt.subplots(figsize=(min(c["figsize_in"][0], 2.2 + 1.5 * n), c["figsize_in"][1] * 0.9))
+        x = list(range(n))
+        ax.bar(x, plotted, width=min(c["bar_width"], 0.55), color=cols,
+               edgecolor=c["bar_edge_color"], linewidth=c["bar_edge_width"], zorder=3)
+        for xi, v in zip(x, values):
+            if v is None:
+                ax.text(xi, ymax * 0.02, "not available", rotation=90, ha="center", va="bottom",
+                        fontsize=c["annotation_size"], color=styles.hex_color("muted"))
+            else:
+                ax.text(xi, v + ymax * 0.015, f"{v:,.2f} {unit}", ha="center", va="bottom",
+                        fontsize=c["annotation_size"])
+        ax.set_xticks(x)
+        ax.set_xticklabels([_short(l, 22) for l in labels],
+                           rotation=c["tick_rotation"] if n > 3 else 0,
+                           ha="right" if n > 3 else "center")
+        ax.set_ylim(0, ymax)
+        ax.set_ylabel(axis_label or unit)
+        ax.set_title(title, loc="left", fontweight="bold")
+        if c["grid"]:
+            ax.grid(axis=c["grid_axis"], color=c["grid_color"],
+                    linestyle=c["grid_linestyle"], linewidth=c["grid_linewidth"], zorder=0)
+        return _save(fig, path)

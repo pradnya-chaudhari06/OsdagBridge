@@ -1,8 +1,23 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # EXECUTIVE SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════════
+# Every status shown here is derived from the design results through
+# report_data (the same data as Section 5.5 and its charts):
+#   * per check      : UR = Demand / Capacity (or the module's DCR), PASS <= 1.0
+#   * per component  : report_data.component_status
+#   * overall bridge : report_data.design_status
+# Nothing is hard-coded; missing data is reported as such, never as a pass.
 
 from osdagbridge.core.reports.report_utils import _fig_or_placeholder, _render_value, _tex, get_girder_entries
+from osdagbridge.core.reports.latex_tables import fit_colspec
+from osdagbridge.core.reports.report_data import (
+    STATUS_FAIL,
+    STATUS_PASS,
+    collect_utilization,
+    consistency_notes,
+    design_status,
+    per_girder_governing,
+)
 from osdagbridge.core.utils.common import (
     KEY_CARRIAGEWAY_WIDTH,
     KEY_SD_SECTION_DESIGNATION,
@@ -14,44 +29,47 @@ from osdagbridge.core.utils.common import (
 )
 
 
-def _max_float(values):
-    """Return the largest value coercible to float, or None if there are none."""
-    out = None
-    for v in values:
-        try:
-            f = float(v)
-        except (TypeError, ValueError):
-            continue
-        if out is None or f > out:
-            out = f
-    return out
+def _status_tex(status):
+    """Status word, failures in red."""
+    s = _tex(status)
+    return r"\textcolor{red}{\textbf{" + s + "}}" if status == STATUS_FAIL else r"\textbf{" + s + "}"
 
 
-def _max_member_efficiency(pair_designs):
-    """Maximum Osdag 'efficiency' (utilization ratio) over a cross-bracing or
-    end-diaphragm result dump (nested pair -> member -> force_type -> raw).
-    Reads already-computed results only; nothing is recalculated here."""
-    from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
-    if not isinstance(pair_designs, dict):
-        return None
-    best = None
-    for members in pair_designs.values():
-        if not isinstance(members, dict):
-            continue
-        for force_types in members.values():
-            if not isinstance(force_types, dict):
-                continue
-            for raw in force_types.values():
-                try:
-                    val = _extract_osdag_summary(raw or {}).get("efficiency")
-                    if val is None:
-                        continue
-                    f = float(val)
-                except (TypeError, ValueError, AttributeError):
-                    continue
-                if best is None or f > best:
-                    best = f
-    return best
+def _ur_tex(ur):
+    if ur is None:
+        return "---"
+    s = f"{ur:.2f}"
+    return r"\textcolor{red}{" + s + "}" if ur > 1.0 else s
+
+
+def _overall_text(comps, overall):
+    """One-line overall status with the failing checks (if any)."""
+    failing = [f for c in comps for f in c.failing]
+    if overall == STATUS_FAIL:
+        failing.sort(key=lambda i: -(i.ur or 0))
+        parts = [f"{f.label}, UR {f.ur:.2f}" for f in failing[:4]]
+        more = f" and {len(failing) - 4} more" if len(failing) > 4 else ""
+        return _status_tex(overall) + r" --- " + _tex("; ".join(parts) + more)
+    if overall == STATUS_PASS:
+        return _status_tex(overall) + r" --- all checks of all components have UR $\leq$ 1.0"
+    missing = [c.title for c in comps if c.status != STATUS_PASS]
+    return (_status_tex(overall) + r" --- no failing check, but results are missing for: "
+            + _tex(", ".join(missing)))
+
+
+def _outcomes_table(comps):
+    rows = []
+    for c in comps:
+        gov = c.governing
+        check = _tex(gov.label) if gov else (_tex(c.reason) if c.reason else "No results available")
+        rows.append(_tex(c.title) + " & " + _status_tex(c.status) + " & " + check + " & "
+                    + _ur_tex(gov.ur if gov else None) + " & "
+                    + f"{c.n_valid} of {c.n_checks}" + r" \\" + "\n" + r"\hline")
+    spec = fit_colspec(r"|L{3.4cm}|C{2.4cm}|L{6.0cm}|C{1.4cm}|C{2.2cm}|")
+    return (r"\noindent\begin{tabular}{" + spec + "}\n" + r"\hline" + "\n"
+            r"\rowcolor{tableHeaderBg}\textbf{Component} & \textbf{Status} & "
+            r"\textbf{Governing check} & \textbf{Max UR} & \textbf{Checks with data} \\" + "\n"
+            + r"\hline" + "\n" + "\n".join(rows) + "\n" + r"\end{tabular}")
 
 
 def executive_summary(input_dict, output_dict, fig_paths) -> str:
@@ -61,78 +79,32 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
     geom_fig = _fig_or_placeholder(fig_paths.get('final_geometry'),
                                     'Figure 3 -- 3D View of Bridge Superstructure')
 
-    # All girders share the same section, governing check, and UR.
     # The section designation is produced by the designer pipeline, so it lives
     # in output_dict (not input_dict).
     sec = _render_value(output_dict, KEY_SD_SECTION_DESIGNATION)
 
-    # ── Pull the stored result dicts once, then work off these locals ─────────
-    # (no value is recomputed here — the pipeline already filled these in).
-    design_results = output_dict.get("design_results", {}) or {}
-    per_girder     = design_results.get("per_girder", {}) or {}
-    deck_results   = output_dict.get("deck_design_results", {}) or {}
-    cb_results     = output_dict.get("crossbracing_design_results", {}) or {}
-    ed_results     = output_dict.get("end_diaphragm_design_results", {}) or {}
+    # ── Design status: one source for every component ────────────────────────
+    summary = collect_utilization(input_dict, output_dict)
+    comps, overall = design_status(summary)
+    valid = [c.governing for c in comps if c.governing is not None]
+    gov = max(valid, key=lambda i: i.ur) if valid else None
+    gov_comp = next((c.title for c in comps if c.governing is gov), "") if gov else ""
+    overall_status = _overall_text(comps, overall) if comps else "---"
+    gov_check = (_tex(gov.label) + " --- " + _tex(gov_comp)) if gov else "---"
+    overall_ur = (_ur_tex(gov.ur) + " (" + _tex(gov_comp) + ")") if gov else "---"
 
-    # Overall Design Status — girder checks only: Pass if every check passes,
-    # otherwise Fail with the names of the failing checks. Each check carries a
-    # pre-computed {name, dcr, status}.
-    failing = []                        # failing check names (order-preserving, deduped)
-    gov_name, gov_dcr = "", None
-    girder_max_ur = None
-    for g, gd in per_girder.items():
-        if str(g).startswith("EB"):     # skip edge-beam pseudo girders
-            continue
-        for chk in (gd.get("checks") or []):
-            try:
-                _val = chk.get("dcr")
-                if _val is None:
-                    dcr = None
-                else:
-                    dcr = float(_val)
-            except (TypeError, ValueError):
-                dcr = None
-            name = str(chk.get("name", "")).strip()
-            is_fail = ("FAIL" in str(chk.get("status", "")).upper()) or (dcr is not None and dcr > 1.0)
-            if is_fail and name and name not in failing:
-                failing.append(name)
-            if dcr is not None:
-                if gov_dcr is None or dcr > gov_dcr:
-                    gov_dcr, gov_name = dcr, name
-                if girder_max_ur is None or dcr > girder_max_ur:
-                    girder_max_ur = dcr
+    notes = consistency_notes(input_dict, output_dict)
+    notes_tex = ""
+    if notes:
+        notes_tex = (r"\section*{Data Consistency Notes}" "\n"
+                     r"\addcontentsline{toc}{section}{Data Consistency Notes}" "\n"
+                     r"The following inconsistencies were found in the analysis / design output. "
+                     r"They are reported here as found; the report does not change engineering results." "\n"
+                     r"\begin{itemize}" "\n"
+                     + "\n".join(r"\item " + _tex(t) for t in notes.values()) + "\n"
+                     r"\end{itemize}" "\n")
 
-    if not per_girder:
-        overall_design_status = ""
-    elif failing:
-        overall_design_status = "Fail (" + ", ".join(failing) + ")"
-    else:
-        overall_design_status = "Pass"
-
-    # Overall Utilization Ratio — the maximum UR across all bridge components,
-    # tagged with the governing component (e.g. "1.05 (Deck slab)").
-    component_urs = []                  # (ur_value, component_label)
-    if girder_max_ur is not None:
-        component_urs.append((girder_max_ur, "Girder"))
-    deck_max = _max_float([v for k, v in deck_results.items() if str(k).startswith("ur_")])
-    if deck_max is not None:
-        component_urs.append((deck_max, "Deck slab"))
-    for results, label in ((cb_results, "Cross bracing"), (ed_results, "End diaphragm")):
-        m = _max_member_efficiency(results)
-        if m is not None:
-            component_urs.append((m, label))
-    if component_urs:
-        max_ur, max_label = max(component_urs, key=lambda t: t[0])
-        overall_utilization_ratio = f"{max_ur:.2f} ({max_label})"
-    else:
-        overall_utilization_ratio = ""
-
-    gov = _tex(gov_name) if gov_name not in (None, '', 'None') else ''
-    ur = _tex(overall_utilization_ratio) if overall_utilization_ratio else ''
-
-    # --- Dynamic Table 1: fetch backend-populated labels via exact suffix pattern ---
-    # defaults.py populates: KEY_MP_GD_SELECT_GIRDER + '.G{i}' = 'G{i}'
-    #                        KEY_MP_GD_MEMBER_ID     + '.G{i}.M1' = 'G{i}M1'
+    # --- Table 1: one column per girder of the input (Chapter 2 numbering) ---
     labels = get_girder_entries(input_dict)
     if not labels:
         labels = [("", "")]
@@ -140,27 +112,33 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
 
     # Column widths: row-label column fixed at 2.8cm; girder columns share remainder
     label_col_cm = 2.8
-    # Available width ≈ 15.0cm for A4 with 1in margins; each girder col gets equal share
     girder_col_cm = round(max(1.5, (15.0 - label_col_cm) / n_cols), 1)
     col_spec = '|C{' + str(label_col_cm) + 'cm}|' + '|'.join(['C{' + str(girder_col_cm) + 'cm}'] * n_cols) + '|'
+    # The share above ignores cell padding and rules (the table was ~1 cm
+    # wider than the page for 4 girders); scale it to the real text width.
+    col_spec = fit_colspec(col_spec)
 
-    # Header row
+    per_girder = per_girder_governing(output_dict)
+
+    def _gcell(lbl, what):
+        it = per_girder.get(lbl)
+        if it is None:
+            return "---"
+        if what == "check":
+            return _tex(it.check)
+        return _ur_tex(it.ur) + (r" (\textcolor{red}{FAIL})" if it.status == "fail" else "")
+
     hdr_cells = ' &\n  '.join([r'\textbf{' + _tex(lbl) + '}' for lbl, _ in labels])
     header_row = r'  \textbf{} &' + '\n  ' + hdr_cells + r' \\' + '\n'
+    member_id_row = 'Member ID & ' + ' & '.join([_tex(mid) for _, mid in labels]) + r' \\' + '\n'
+    sections = "Section Designation & " + ' & '.join([sec or "---"] * n_cols) + r" \\"
+    gov_checks = "Governing Check & " + ' & '.join(_gcell(l, "check") for l, _ in labels) + r" \\"
+    urs = "Utilization Ratio (max) & " + ' & '.join(_gcell(l, "ur") for l, _ in labels) + r" \\"
 
-    # Member ID row
-    mid_cells = ' & '.join([_tex(mid) for _, mid in labels])
-    member_id_row = 'Member ID & ' + mid_cells + r' \\' + '\n'
-
-    # Section / Governing Check / UR rows
-    sec_cells = ' & '.join([sec] * n_cols)
-    sections = f"Section Designation & {sec_cells} \\\\"
-    gov_cells = ' & '.join([gov] * n_cols)
-    gov_checks = f"Governing Check & {gov_cells} \\\\"
-    ur_cells = ' & '.join([ur] * n_cols)
-    urs = f"Utilization Ratio & {ur_cells} \\\\"
-
-    table1 = (r'\noindent\textbf{Table 1 -- Final Bridge Geometry (after optimization)}' + '\n\n'
+    # The minipage keeps the table title on the same page as the table (the
+    # title was left alone at a page bottom before).
+    table1 = (r'\par\noindent\begin{minipage}{\textwidth}' + '\n'
+              r'\noindent\textbf{Table 1 -- Final Bridge Geometry (after optimization)}' + '\n\n'
               r'\vspace{0.4em}' + '\n'
               r'\noindent' + '\n'
               r'\begin{tabular}{' + col_spec + '}\n'
@@ -175,7 +153,8 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
               r'\hline' + '\n'
               + urs + '\n'
               r'\hline' + '\n'
-              r'\end{tabular}')
+              r'\end{tabular}' + '\n'
+              r'\end{minipage}')
 
     return r"""
 \newpage
@@ -202,15 +181,15 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{No. of Girders} & """ + (_render_value(input_dict, KEY_TS_NO_OF_GIRDERS)) + r""" \\
 \hline
-\textbf{Girder Spacing} & """ + (_render_value(input_dict, KEY_TS_GIRDER_SPACING)) + r""" \\
+\textbf{Girder Spacing} & """ + (_render_value(input_dict, KEY_TS_GIRDER_SPACING, ' m')) + r""" \\
 \hline
-\textbf{Deck Thickness} & """ + (_render_value(input_dict, KEY_TS_DECK_THICKNESS)) + r""" \\
+\textbf{Deck Thickness} & """ + (_render_value(input_dict, KEY_TS_DECK_THICKNESS, ' mm')) + r""" \\
 \hline
-\textbf{Overall Design Status} & """ + (_tex(overall_design_status)) + r""" \\
+\textbf{Overall Design Status} & """ + overall_status + r""" \\
 \hline
-\textbf{Governing Check} & """ + gov + r""" \\
+\textbf{Governing Check} & """ + gov_check + r""" \\
 \hline
-\textbf{Overall Utilization Ratio (max)} & """ + ur + r""" \\
+\textbf{Overall Utilization Ratio (max)} & """ + overall_ur + r""" \\
 \hline
 \end{tabular}
 
@@ -222,7 +201,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 """ + cs_fig + '\n\n' + geom_fig + '\n\n' + table1 + r"""
 
 \vspace{0.4em}
-\noindent\textit{Note: Utilization ratio (UR) = demand / capacity. A value $< 1.0$ indicates a passing check.}
+\noindent\textit{Note: Utilization ratio (UR) = demand / capacity. UR $\leq 1.0$ passes, UR $> 1.0$ fails. Girder columns show each girder's governing check as labelled by the design module.}
 
 \vspace{1em}
 
@@ -230,11 +209,12 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \addcontentsline{toc}{section}{Key Design Outcomes Summary}
 \label{sec:key-outcomes}
 
-\noindent Girder design pass \\
-Cross bracing design pass \\
-End Diaphragm design pass \\
-Deck design pass
+""" + _outcomes_table(comps) + r"""
 
+\vspace{0.4em}
+\noindent\textit{Note: A component passes only when every one of its checks has valid Demand / Capacity data and UR $\leq 1.0$; a component without results is ``NOT AVAILABLE'' and is never counted as passing. Details: Section 5.5.}
+
+""" + notes_tex + r"""
 \section*{Design Assumptions and Limitations}
 \addcontentsline{toc}{section}{Design Assumptions and Limitations}
 \label{sec:assumptions}
